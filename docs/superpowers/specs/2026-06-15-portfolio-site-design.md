@@ -314,6 +314,20 @@ Slug rules:
 - To change a public URL in V1, create a new draft, publish it, and archive the old content.
 - Slug redirects are outside V1.
 
+Slugify rules:
+
+- Normalize input by trimming whitespace and lowercasing.
+- Transliterate ASCII letters and numbers where straightforward.
+- Remove apostrophes.
+- Replace any run of non-alphanumeric characters with a single hyphen.
+- Trim leading and trailing hyphens.
+- Maximum slug length is 80 characters after normalization.
+- If normalization produces an empty slug, require the admin to enter a manual slug.
+- Reserved slugs are `admin`, `api`, `uploads`, `sitemap.xml`, `robots.txt`, `login`, `logout`, `preview`, `new`, and `edit`.
+- Duplicate draft slugs receive a numeric suffix such as `my-post-2`.
+- Publishing still requires final unique slug validation inside the transaction.
+- Chinese or other non-Latin titles require manual slug confirmation in V1 when transliteration would produce an empty or unclear slug.
+
 `profile` stores singleton personal information:
 
 - `id`
@@ -350,6 +364,7 @@ Slug rules:
 - Unique `(profile_id, label)`.
 - Unique `(profile_id, url)`.
 - `sort_order` controls Contact display order.
+- Any social link insert, update, delete, or reorder must bump `profile.updated_at`.
 - Deleting a social link is a hard delete because it has no dependent content.
 
 `admins` stores:
@@ -588,6 +603,28 @@ Required indexes and constraints:
 - Unique `sessions.session_token_hash`.
 - Index `(admin_id, expires_at)` on `sessions`.
 
+## Foreign Key Rules
+
+Required foreign key behavior:
+
+- `social_links.profile_id -> profile.id ON DELETE CASCADE`.
+- `sessions.admin_id -> admins.id ON DELETE CASCADE`.
+- `profile.avatar_media_id -> media_assets.id ON DELETE RESTRICT`.
+- `profile.og_image_media_id -> media_assets.id ON DELETE SET NULL`.
+- `projects.cover_media_id -> media_assets.id ON DELETE RESTRICT`.
+- `projects.og_image_media_id -> media_assets.id ON DELETE SET NULL`.
+- `writings.cover_media_id -> media_assets.id ON DELETE RESTRICT`.
+- `writings.og_image_media_id -> media_assets.id ON DELETE SET NULL`.
+- `talks.cover_media_id -> media_assets.id ON DELETE RESTRICT`.
+- `talks.og_image_media_id -> media_assets.id ON DELETE SET NULL`.
+- `project_tech.project_id -> projects.id ON DELETE CASCADE`.
+- `project_tech.tech_id -> techs.id ON DELETE RESTRICT`.
+- `writing_tags.writing_id -> writings.id ON DELETE CASCADE`.
+- `writing_tags.tag_id -> tags.id ON DELETE RESTRICT`.
+- `media_references.media_asset_id -> media_assets.id ON DELETE RESTRICT`.
+
+SQLite must run with `PRAGMA foreign_keys = ON` before any write.
+
 ## API Design
 
 Public API:
@@ -701,6 +738,37 @@ Admin tag and technology semantics:
 - Renaming, merging, and deleting global `tags` or `techs` are outside V1.
 - Orphaned global `tags` and `techs` can remain in the database; they are not returned by public APIs unless joined to published content.
 
+Admin media API semantics:
+
+- `GET /api/admin/media` returns media picker items with reference state.
+- Media picker item shape:
+
+```json
+{
+  "id": 42,
+  "file_name": "portrait.jpg",
+  "variants": {
+    "cover": {
+      "url": "/uploads/ab/cd/cover.jpg",
+      "width": 1200,
+      "height": 675,
+      "mime_type": "image/jpeg"
+    },
+    "card": {
+      "url": "/uploads/ab/cd/card.jpg",
+      "width": 800,
+      "height": 450,
+      "mime_type": "image/jpeg"
+    }
+  },
+  "created_at": "2026-06-15T00:00:00Z",
+  "referenced": true
+}
+```
+
+- `referenced = true` disables the delete action in the media picker.
+- `DELETE /api/admin/media/:id` returns `409 conflict` when referenced.
+
 Admin list defaults:
 
 - `page` defaults to `1`.
@@ -721,7 +789,8 @@ Reorder semantics:
 ```
 
 - Allowed resources are `experience`, `projects`, `writing`, and `talks`.
-- `ordered_ids` must contain exactly the IDs in the current filtered admin list scope for that resource.
+- Reorder is full-resource, not page-scoped or filter-scoped.
+- `ordered_ids` must contain exactly all IDs for that resource.
 - The server updates all affected rows in one transaction.
 - The server normalizes `sort_order` to consecutive integers starting at `10` and stepping by `10`.
 - If IDs are missing, duplicated, or unknown, return `validation_error` with field errors on `ordered_ids`.
@@ -805,9 +874,24 @@ Project detail response shape:
   },
   "media": {
     "42": {
-      "content": "/uploads/ab/cd/content.jpg",
-      "cover": "/uploads/ab/cd/cover.jpg",
-      "card": "/uploads/ab/cd/card.jpg"
+      "content": {
+        "url": "/uploads/ab/cd/content.jpg",
+        "width": 1600,
+        "height": 900,
+        "mime_type": "image/jpeg"
+      },
+      "cover": {
+        "url": "/uploads/ab/cd/cover.jpg",
+        "width": 1200,
+        "height": 675,
+        "mime_type": "image/jpeg"
+      },
+      "card": {
+        "url": "/uploads/ab/cd/card.jpg",
+        "width": 800,
+        "height": 450,
+        "mime_type": "image/jpeg"
+      }
     }
   }
 }
@@ -840,9 +924,24 @@ Admin project edit response shape:
   },
   "media": {
     "42": {
-      "content": "/uploads/ab/cd/content.jpg",
-      "cover": "/uploads/ab/cd/cover.jpg",
-      "card": "/uploads/ab/cd/card.jpg"
+      "content": {
+        "url": "/uploads/ab/cd/content.jpg",
+        "width": 1600,
+        "height": 900,
+        "mime_type": "image/jpeg"
+      },
+      "cover": {
+        "url": "/uploads/ab/cd/cover.jpg",
+        "width": 1200,
+        "height": 675,
+        "mime_type": "image/jpeg"
+      },
+      "card": {
+        "url": "/uploads/ab/cd/card.jpg",
+        "width": 800,
+        "height": 450,
+        "mime_type": "image/jpeg"
+      }
     }
   }
 }
@@ -906,7 +1005,10 @@ Session cookie requirements:
 CSRF and Origin requirements:
 
 - `GET`, `HEAD`, and `OPTIONS` do not mutate state and do not require a CSRF token.
-- `POST`, `PUT`, `PATCH`, and `DELETE` under `/api/admin/*` require a valid session and `X-CSRF-Token`.
+- `POST /api/admin/login` is the only unsafe admin endpoint that does not require an existing session or CSRF token.
+- `POST /api/admin/login` requires Origin or strict Referer validation and login rate limiting.
+- `POST /api/admin/logout` requires a valid session and `X-CSRF-Token`.
+- All other `POST`, `PUT`, `PATCH`, and `DELETE` requests under `/api/admin/*` require a valid session and `X-CSRF-Token`.
 - The CSRF token is generated server-side, bound to the session, and returned by `GET /api/admin/csrf` and `GET /api/admin/me`.
 - The React admin app stores the CSRF token in memory and sends it as `X-CSRF-Token` for unsafe requests.
 - Unsafe requests must include an `Origin` header matching `APP_ORIGIN`.
@@ -932,7 +1034,7 @@ Security headers:
 default-src 'self';
 script-src 'self';
 style-src 'self';
-img-src 'self' data:;
+img-src 'self';
 font-src 'self';
 connect-src 'self';
 frame-ancestors 'none';
@@ -973,6 +1075,12 @@ Markdown image rendering order:
 6. The resolved same-origin URL is then passed through the same sanitization allowlist as the rest of the rendered output.
 7. The original Markdown `src` is never emitted directly into the DOM.
 
+Implementation detail:
+
+- A project-owned remark or rehype plugin rewrites valid `media://asset/{id}/{variant}` image URLs to resolved same-origin `/uploads/...` URLs before `rehype-sanitize` runs.
+- The sanitize schema only allows image `src` values that are already same-origin derivative URLs from the media map.
+- The React image component receives the resolved `width`, `height`, and `mime_type` from the media map and sets dimensions to reduce layout shift.
+
 Link rules:
 
 - Allow `http`, `https`, `mailto`, and same-origin relative URLs.
@@ -1011,6 +1119,8 @@ Upload rules:
 - Generate standard derivatives for common frontend usage: original-bounded image, `1200x675` cover, `800x450` card thumbnail, and `400x400` avatar thumbnail.
 - Store derivative paths and dimensions in `media_assets`.
 - Keep cover images at a `16:9` target ratio unless a specific module defines another ratio.
+- On startup, delete files in `PRIVATE_UPLOADS_DIR` older than 24 hours.
+- Startup temp cleanup logs the count of deleted files and total bytes removed.
 
 Static asset caching:
 
@@ -1153,15 +1263,19 @@ Backend tests:
 - Session expiration, session rotation, and logout invalidation.
 - Database stores `session_token_hash`, not raw session tokens.
 - Admin bootstrap creates the first admin only when no admin exists and never overwrites an existing admin.
-- CSRF token and Origin validation for unsafe admin methods.
+- `POST /api/admin/login` requires Origin or Referer validation and rate limiting, but not an existing session or CSRF token.
+- `POST /api/admin/logout` and other unsafe admin methods require a valid session and CSRF token.
 - Login rate limiting.
 - UTC timestamp storage, RFC 3339 API serialization, and injectable-clock publishing behavior.
 - Profile API saves nested `social_links` transactionally.
+- Social link changes bump `profile.updated_at` and stale `If-Match` profile updates return `409 conflict`.
 - CRUD behavior for projects, writing, talks, and experience.
 - Reorder endpoints validate full `ordered_ids` payloads and normalize `sort_order` transactionally.
 - Slug uniqueness for routable content.
 - Slug immutability after publish for routable content.
+- Slugify reserved words, empty output, duplicate suffixing, length limit, and non-Latin manual-confirmation behavior.
 - Hard delete is blocked for published and archived rows, and allowed only for never-published drafts.
+- Foreign key `ON DELETE` behavior matches the spec.
 - Global `tags.slug` and `techs.slug` filtering behavior.
 - Public APIs only returning `status = 'published'` content whose `published_at` is not in the future.
 - `GET /api/site/home` featured selection and backfill behavior.
@@ -1169,9 +1283,11 @@ Backend tests:
 - Content saves rebuild `media_references` from cover/avatar/OG media fields and `media://asset/{id}/{variant}` Markdown references.
 - Media delete is blocked when `media_references` rows exist.
 - `media_assets.variants_json` is generated with the required variant keys and immutable derivative paths.
+- `GET /api/admin/media` returns media picker items with `referenced` state.
 - Admin preview routes are intercepted by Go, require a valid session, and send `X-Robots-Tag: noindex, nofollow`.
 - HTTP route priority serves `/api/*`, `/uploads/*`, `/sitemap.xml`, `/robots.txt`, and `/admin/preview/*` before React fallback.
 - Raw upload temp files are never served and are removed after processing.
+- Startup cleanup removes private upload temp files older than 24 hours.
 - Upload size, MIME sniffing, image decode, pixel-dimension, path traversal, and derivative-generation restrictions.
 - SEO metadata injection for homepage, list pages, contact, and detail routes.
 - SEO injection escapes text and attribute values.
@@ -1193,6 +1309,7 @@ Frontend tests:
 - Markdown preview renders body content.
 - Markdown renderer rejects raw HTML and unsafe links.
 - Markdown renderer resolves `media://asset/{id}/{variant}` references through the API-provided media map.
+- Markdown-rendered images receive width and height from the media map.
 - Public Markdown pages and admin Markdown preview use the same renderer.
 - Draft, archived, and future-dated content is not shown on the public site.
 - Admin unsafe mutations send `X-CSRF-Token`.
