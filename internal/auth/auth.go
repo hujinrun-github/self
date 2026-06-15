@@ -61,6 +61,13 @@ func (s *Service) Routes() http.Handler {
 	return r
 }
 
+func (s *Service) RegisterRoutes(r chi.Router) {
+	r.Post("/api/admin/login", s.handleLogin)
+	r.With(s.RequireAdmin).Post("/api/admin/logout", s.handleLogout)
+	r.With(s.RequireAdmin).Get("/api/admin/me", s.handleMe)
+	r.With(s.RequireAdmin).Get("/api/admin/csrf", s.handleCSRF)
+}
+
 func (s *Service) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, ok := s.sessionFromRequest(w, r)

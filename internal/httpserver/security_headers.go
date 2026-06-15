@@ -37,3 +37,15 @@ func productionCSP() string {
 func containsDirective(csp string, directive string) bool {
 	return strings.Contains(csp, directive)
 }
+
+func SetCacheHeaders(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	switch {
+	case strings.HasPrefix(path, "/api/"):
+		w.Header().Set("Cache-Control", "no-store")
+	case strings.HasPrefix(path, "/assets/"), strings.HasPrefix(path, "/uploads/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	default:
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+}
