@@ -238,8 +238,10 @@ social_links
 experiences
 talks
 writings
+tags
 writing_tags
 projects
+techs
 project_tech
 media_assets
 media_references
@@ -278,6 +280,15 @@ Publishing rules:
 - If `published_at` is empty when publishing, set it to the current server time.
 - Future `published_at` values schedule publication.
 - Archiving content sets `status = 'archived'` and keeps historical `published_at`.
+
+Time rules:
+
+- Store all timestamps in UTC.
+- API responses use RFC 3339 / ISO 8601 strings with a `Z` UTC suffix.
+- API requests that include timestamps must use RFC 3339 / ISO 8601.
+- The server compares publication times in UTC.
+- The frontend displays dates using the browser locale unless a page explicitly needs a fixed format.
+- Tests that depend on time use an injectable server clock.
 
 Slug rules:
 
@@ -369,20 +380,36 @@ Slug rules:
 - `sort_order`
 - `published_at`
 
-`project_tech` stores project technology tags:
+Project technology model:
+
+`techs` stores normalized technology terms:
+
+- `id`
+- `name`
+- `slug`
+- `created_at`
+- `updated_at`
+
+`techs` constraints:
+
+- Unique `slug`.
+- Slugs are globally normalized with the same slugify function used for routable content.
+- Public `tech=:tech` filters match `techs.slug`.
+
+`project_tech` stores project-to-technology joins:
 
 - `id`
 - `project_id`
-- `name`
-- `slug`
+- `tech_id`
 - `sort_order`
 
 `project_tech` constraints:
 
-- Unique `(project_id, slug)`.
+- Unique `(project_id, tech_id)`.
 - `sort_order` controls tag display order on project cards and detail pages.
 - Deleting a project cascades to its `project_tech` rows.
 - Removing a technology from a project hard-deletes only that join row.
+- Deleting a `techs` row is blocked while any `project_tech` row references it.
 
 `writings` stores:
 
@@ -399,20 +426,36 @@ Slug rules:
 - `sort_order`
 - `published_at`
 
-`writing_tags` stores article tags:
+Writing tag model:
+
+`tags` stores normalized writing tags:
+
+- `id`
+- `name`
+- `slug`
+- `created_at`
+- `updated_at`
+
+`tags` constraints:
+
+- Unique `slug`.
+- Slugs are globally normalized with the same slugify function used for routable content.
+- Public `tag=:tag` filters match `tags.slug`.
+
+`writing_tags` stores writing-to-tag joins:
 
 - `id`
 - `writing_id`
-- `name`
-- `slug`
+- `tag_id`
 - `sort_order`
 
 `writing_tags` constraints:
 
-- Unique `(writing_id, slug)`.
+- Unique `(writing_id, tag_id)`.
 - `sort_order` controls tag display order on writing cards and detail pages.
 - Deleting a writing entry cascades to its `writing_tags` rows.
 - Removing a tag from an article hard-deletes only that join row.
+- Deleting a `tags` row is blocked while any `writing_tags` row references it.
 
 `talks` stores:
 
@@ -435,7 +478,6 @@ Slug rules:
 
 - `file_name`
 - `storage_key`
-- `url`
 - `mime_type`
 - `size_bytes`
 - `width`
@@ -460,8 +502,48 @@ Slug rules:
 - Unique `(media_asset_id, resource_type, resource_id, source)`.
 - Index `media_asset_id` for delete blocking.
 - Content saves rebuild references for that content row inside the same transaction.
-- Markdown saves parse same-origin `/uploads/*` image URLs, resolve them to `media_assets`, and store `source = 'markdown'` references.
-- Public APIs expand media IDs and references into derivative URLs; database content rows do not store mutable public media URLs.
+- Markdown image inserts use the internal syntax `media://asset/{id}/{variant}`.
+- Allowed Markdown variants are `content`, `cover`, `card`, and `avatar`.
+- Content saves parse `media://asset/{id}/{variant}` references, verify that each media asset and variant exists, and store `source = 'markdown'` references.
+- Public and admin content APIs return raw Markdown plus a `media` map that resolves referenced media IDs and variants to public derivative URLs.
+- Public APIs expand media IDs and references into derivative URLs where needed; database content rows do not store mutable public media URLs.
+- User-entered `/uploads/*` Markdown image URLs are rejected in V1.
+- User-entered remote Markdown image URLs are rejected in V1.
+
+`media_assets.variants_json` structure:
+
+```json
+{
+  "content": {
+    "path": "/uploads/ab/cd/content.jpg",
+    "width": 1600,
+    "height": 900,
+    "mime_type": "image/jpeg",
+    "size_bytes": 123456
+  },
+  "cover": {
+    "path": "/uploads/ab/cd/cover.jpg",
+    "width": 1200,
+    "height": 675,
+    "mime_type": "image/jpeg",
+    "size_bytes": 45678
+  },
+  "card": {
+    "path": "/uploads/ab/cd/card.jpg",
+    "width": 800,
+    "height": 450,
+    "mime_type": "image/jpeg",
+    "size_bytes": 23456
+  },
+  "avatar": {
+    "path": "/uploads/ab/cd/avatar.png",
+    "width": 400,
+    "height": 400,
+    "mime_type": "image/png",
+    "size_bytes": 12345
+  }
+}
+```
 
 ## Database Indexes
 
@@ -471,10 +553,12 @@ Required indexes and constraints:
 - Unique `slug` on `talks`, `writings`, and `projects`.
 - Index `(status, published_at, sort_order)` on `experiences`, `talks`, `writings`, and `projects`.
 - Index `(status, featured, sort_order, published_at)` on `talks`, `writings`, and `projects`.
-- Index `writing_tags.slug`.
-- Unique `(writing_id, slug)` on `writing_tags`.
-- Index `project_tech.slug`.
-- Unique `(project_id, slug)` on `project_tech`.
+- Unique `tags.slug`.
+- Unique `(writing_id, tag_id)` on `writing_tags`.
+- Index `writing_tags.tag_id`.
+- Unique `techs.slug`.
+- Unique `(project_id, tech_id)` on `project_tech`.
+- Index `project_tech.tech_id`.
 - Unique `(profile_id, label)` and `(profile_id, url)` on `social_links`.
 - Index `(profile_id, sort_order)` on `social_links`.
 - Index `media_references.media_asset_id`.
@@ -504,6 +588,9 @@ Public list defaults:
 - `limit` defaults to `12` and is capped at `50`.
 - Sort order defaults to `published_at DESC`, then `sort_order ASC`.
 - Responses include pagination metadata: `page`, `limit`, `total`, and `has_more`.
+- `tech` filters use globally normalized `techs.slug`.
+- `tag` filters use globally normalized `tags.slug`.
+- Unknown `tech` or `tag` filters return an empty list with valid pagination metadata, not `404`.
 
 `GET /api/site/home` response rules:
 
@@ -570,6 +657,15 @@ POST   /api/admin/media
 DELETE /api/admin/media/:id
 ```
 
+Admin profile API semantics:
+
+- `GET /api/admin/profile` returns the singleton profile row with nested `social_links`.
+- `PUT /api/admin/profile` accepts profile fields plus a full ordered `social_links` array.
+- Each `social_links` item can include an existing `id`; items without `id` are created.
+- Existing links omitted from the submitted array are hard-deleted.
+- Profile and social link changes are saved in one transaction.
+- `GET /api/site/profile` also returns `social_links` for the public Contact section.
+
 Admin list defaults:
 
 - `page` defaults to `1`.
@@ -591,7 +687,8 @@ Delete semantics:
 
 - `DELETE` is a hard delete.
 - Published rows cannot be deleted directly. They must be archived first.
-- Hard delete is allowed only for `draft` and `archived` rows.
+- Hard delete is allowed only for rows where `status = 'draft'` and `published_at IS NULL`.
+- Published and archived rows are never hard-deleted in V1 because they may have had public URLs.
 - Deleting a project or writing entry cascades to its technology or tag rows.
 - Deleting media is blocked while any `media_references` row points at the media asset.
 - Content create/update transactions must refresh `media_references` before returning success.
@@ -650,6 +747,23 @@ Security headers:
 - `Referrer-Policy: strict-origin-when-cross-origin`.
 - `X-Frame-Options: DENY` for admin pages.
 - `Content-Security-Policy` must disallow inline script execution for public and admin pages. If a future build-time nonce strategy is added, document it before allowing inline script.
+- Production CSP:
+
+```text
+default-src 'self';
+script-src 'self';
+style-src 'self';
+img-src 'self' data:;
+font-src 'self';
+connect-src 'self';
+frame-ancestors 'none';
+base-uri 'self';
+form-action 'self';
+object-src 'none';
+```
+
+- Vite production builds must not require inline scripts.
+- If inline styles are introduced by a dependency, replace the dependency or add a documented nonce strategy before release.
 
 ## Markdown Rendering Safety
 
@@ -679,8 +793,9 @@ Link rules:
 
 Image rules:
 
-- Allow same-origin uploaded images under `/uploads/*`.
-- Allow remote `https` images only if explicitly enabled by configuration.
+- Allow images referenced through `media://asset/{id}/{variant}` and resolved by the shared Markdown renderer.
+- Reject raw `/uploads/*` image URLs in Markdown.
+- Reject remote images in Markdown in V1.
 - Reject `data:` images and inline SVG.
 - Require `alt` text in admin validation for cover images and Markdown image inserts.
 
@@ -706,6 +821,15 @@ Upload rules:
 - Generate standard derivatives for common frontend usage: original-bounded image, `1200x675` cover, `800x450` card thumbnail, and `400x400` avatar thumbnail.
 - Store derivative paths and dimensions in `media_assets`.
 - Keep cover images at a `16:9` target ratio unless a specific module defines another ratio.
+
+Static asset caching:
+
+- `web/dist/assets/*` uses long-lived immutable caching: `Cache-Control: public, max-age=31536000, immutable`.
+- `index.html` and dynamically meta-injected HTML use `Cache-Control: no-cache`.
+- Public API responses use `Cache-Control: no-store` in V1.
+- Upload derivatives under `/uploads/*` use long-lived immutable caching: `Cache-Control: public, max-age=31536000, immutable`.
+- Upload derivative file names must include a random storage key and must never be overwritten in place.
+- Replacing an image creates a new media asset and new derivative paths.
 
 ## Frontend Implementation Shape
 
@@ -839,29 +963,40 @@ Backend tests:
 - Session expiration, session rotation, and logout invalidation.
 - CSRF token and Origin validation for unsafe admin methods.
 - Login rate limiting.
+- UTC timestamp storage, RFC 3339 API serialization, and injectable-clock publishing behavior.
+- Profile API saves nested `social_links` transactionally.
 - CRUD behavior for projects, writing, talks, and experience.
 - Slug uniqueness for routable content.
 - Slug immutability after publish for routable content.
+- Hard delete is blocked for published and archived rows, and allowed only for never-published drafts.
+- Global `tags.slug` and `techs.slug` filtering behavior.
 - Public APIs only returning `status = 'published'` content whose `published_at` is not in the future.
 - `GET /api/site/home` featured selection and backfill behavior.
 - Backend stores raw Markdown without rendering or persisting HTML.
-- Content saves rebuild `media_references` from cover/avatar/OG media fields and Markdown image URLs.
+- Content saves rebuild `media_references` from cover/avatar/OG media fields and `media://asset/{id}/{variant}` Markdown references.
 - Media delete is blocked when `media_references` rows exist.
+- `media_assets.variants_json` is generated with the required variant keys and immutable derivative paths.
 - Admin preview routes are intercepted by Go, require a valid session, and send `X-Robots-Tag: noindex, nofollow`.
 - Upload size, MIME sniffing, image decode, pixel-dimension, path traversal, and derivative-generation restrictions.
-- SEO metadata injection for homepage and detail routes.
+- SEO metadata injection for homepage, list pages, contact, and detail routes.
 - SEO injection escapes text and attribute values.
+- `/robots.txt` and `/sitemap.xml` output.
+- Cache headers for `web/dist/assets/*`, meta-injected HTML, API responses, and `/uploads/*` derivatives.
+- Production CSP header contains the required directives.
 - SQLite migration and backup routines.
 - Required database indexes exist in migrations.
 
 Frontend tests:
 
 - Public homepage renders key sections from API data.
+- Public homepage handles empty optional modules and featured backfill data.
 - Admin login handles success and failure.
 - Admin forms validate required fields.
 - Admin forms render field-level validation errors from `error.fields`.
+- Admin profile form edits nested social links.
 - Markdown preview renders body content.
 - Markdown renderer rejects raw HTML and unsafe links.
+- Markdown renderer resolves `media://asset/{id}/{variant}` references through the API-provided media map.
 - Public Markdown pages and admin Markdown preview use the same renderer.
 - Draft, archived, and future-dated content is not shown on the public site.
 - Admin unsafe mutations send `X-CSRF-Token`.
@@ -889,7 +1024,7 @@ confirm homepage no longer shows project
 6. Implement media upload, image validation, derivative generation, `media_references`, reference blocking on delete, and upload security tests.
 7. Implement Markdown rendering component, sanitizer schema, admin preview pages, and Markdown XSS tests.
 8. Implement admin pages for managing content, including slug conflict handling, status changes, media picker, and preview.
-9. Implement public pages, home API fallback behavior, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, and frontend route tests.
+9. Implement public pages, home API fallback behavior, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, robots.txt, caching headers, CSP, and frontend route tests.
 10. Add production build scripts, deployment notes, and final end-to-end tests.
 
 ## Implementation Defaults
