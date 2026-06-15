@@ -1,10 +1,7 @@
+import { RouterProvider } from "react-router-dom";
+
+import { router } from "./routes";
+
 export default function App() {
-  return (
-    <main className="app-shell">
-      <section className="section">
-        <h1>Portfolio</h1>
-        <p className="lede">Profile, writing, talks, projects, and contact.</p>
-      </section>
-    </main>
-  );
+  return <RouterProvider router={router} />;
 }
