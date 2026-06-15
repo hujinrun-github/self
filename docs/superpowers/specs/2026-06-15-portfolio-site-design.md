@@ -160,7 +160,7 @@ Content tables that can render detail pages store:
 
 - `seo_title`
 - `seo_description`
-- `og_image_url`
+- `og_image_media_id`
 
 `profile` stores the default site metadata for homepage and fallback cases.
 
@@ -173,11 +173,11 @@ Go route handling:
 - Inject `<title>`, description, canonical URL, Open Graph tags, and Twitter card tags.
 - HTML-escape every injected text value.
 - Attribute-escape every injected attribute value, including URLs.
-- Validate injected URLs before output: canonical and Open Graph URLs must be absolute URLs derived from `PUBLIC_BASE_URL`; image URLs must be same-origin upload URLs or validated absolute `https` URLs.
+- Validate injected URLs before output: canonical and Open Graph URLs must be absolute URLs derived from `PUBLIC_BASE_URL`; image URLs must be generated from `media_assets` or validated absolute `https` URLs.
 - Never inject raw database strings into HTML by direct string concatenation.
 - Fall back from `seo_title` to content title.
 - Fall back from `seo_description` to excerpt or summary.
-- Fall back from `og_image_url` to cover image, then profile avatar.
+- Fall back from `og_image_media_id` to cover media, then profile avatar media.
 - Generate `sitemap.xml` from `PUBLIC_BASE_URL` and published routes.
 - Exclude draft, archived, future-dated, and admin preview routes from sitemap output.
 - Serve `/sitemap.xml` and `/robots.txt` from Go.
@@ -216,6 +216,10 @@ Admin preview rules:
 
 - V1 preview is admin-session-only.
 - Preview routes live under `/admin/preview/:resource/:id`.
+- Go must register `/admin/preview/*` before the React SPA fallback.
+- Go verifies the admin session before serving the preview shell.
+- Unauthorized preview requests return `401` for API-style requests or redirect to `/admin/login` for browser navigation.
+- After session validation, Go serves the React `index.html` shell with preview headers so React can render the preview route.
 - Preview routes require a valid admin session, CSRF is not required for the read-only preview request, and responses must send `X-Robots-Tag: noindex, nofollow`.
 - Preview can render draft, archived, and future-dated content only for the authenticated admin.
 - Preview URLs are not shareable outside the logged-in admin browser.
@@ -238,13 +242,13 @@ writing_tags
 projects
 project_tech
 media_assets
+media_references
 sessions
 ```
 
 All publishable content fields:
 
 - `id`
-- `slug` where the item has a detail page
 - `status` as `draft`, `published`, or `archived`
 - `sort_order`
 - `published_at`
@@ -252,6 +256,12 @@ All publishable content fields:
 - `updated_at`
 
 The publishable content tables are `experiences`, `talks`, `writings`, and `projects`. Public APIs only return rows where `status = 'published'` and `published_at <= now`.
+
+Routable content fields:
+
+- `slug`
+
+The routable content tables are `talks`, `writings`, and `projects`. `experiences` do not have public detail routes or slugs in V1.
 
 Homepage-featured content fields:
 
@@ -269,17 +279,32 @@ Publishing rules:
 - Future `published_at` values schedule publication.
 - Archiving content sets `status = 'archived'` and keeps historical `published_at`.
 
+Slug rules:
+
+- Draft routable content can change `slug`.
+- Publishing locks `slug`.
+- Published and archived routable content cannot change `slug` in V1.
+- To change a public URL in V1, create a new draft, publish it, and archive the old content.
+- Slug redirects are outside V1.
+
 `profile` stores singleton personal information:
 
+- `id`
 - `name`
 - `headline`
 - `summary`
 - `bio`
-- `avatar_url`
+- `avatar_media_id`
 - `email`
 - `seo_title`
 - `seo_description`
-- `og_image_url`
+- `og_image_media_id`
+
+`profile` constraints:
+
+- The table is a singleton with exactly one row.
+- The singleton row uses `id = 1`.
+- `social_links.profile_id` references `profile.id`.
 
 `social_links` stores contact and social destinations:
 
@@ -333,12 +358,12 @@ Publishing rules:
 - `slug`
 - `summary`
 - `content_md`
-- `cover_url`
+- `cover_media_id`
 - `demo_url`
 - `repo_url`
 - `seo_title`
 - `seo_description`
-- `og_image_url`
+- `og_image_media_id`
 - `status`
 - `featured`
 - `sort_order`
@@ -365,10 +390,10 @@ Publishing rules:
 - `slug`
 - `excerpt`
 - `content_md`
-- `cover_url`
+- `cover_media_id`
 - `seo_title`
 - `seo_description`
-- `og_image_url`
+- `og_image_media_id`
 - `status`
 - `featured`
 - `sort_order`
@@ -394,13 +419,13 @@ Publishing rules:
 - `title`
 - `slug`
 - `summary`
-- `cover_url`
+- `cover_media_id`
 - `event_name`
 - `video_url`
 - `duration_minutes`
 - `seo_title`
 - `seo_description`
-- `og_image_url`
+- `og_image_media_id`
 - `status`
 - `featured`
 - `sort_order`
@@ -418,6 +443,45 @@ Publishing rules:
 - `variants_json`
 - `checksum_sha256`
 - `created_at`
+
+`media_references` stores content-to-media usage:
+
+- `id`
+- `media_asset_id`
+- `resource_type`
+- `resource_id`
+- `source`
+- `created_at`
+
+`media_references` constraints:
+
+- `resource_type` is `profile`, `project`, `writing`, or `talk`.
+- `source` is `avatar`, `cover`, `og_image`, or `markdown`.
+- Unique `(media_asset_id, resource_type, resource_id, source)`.
+- Index `media_asset_id` for delete blocking.
+- Content saves rebuild references for that content row inside the same transaction.
+- Markdown saves parse same-origin `/uploads/*` image URLs, resolve them to `media_assets`, and store `source = 'markdown'` references.
+- Public APIs expand media IDs and references into derivative URLs; database content rows do not store mutable public media URLs.
+
+## Database Indexes
+
+Required indexes and constraints:
+
+- `profile.id` primary key with a check or migration guard enforcing singleton `id = 1`.
+- Unique `slug` on `talks`, `writings`, and `projects`.
+- Index `(status, published_at, sort_order)` on `experiences`, `talks`, `writings`, and `projects`.
+- Index `(status, featured, sort_order, published_at)` on `talks`, `writings`, and `projects`.
+- Index `writing_tags.slug`.
+- Unique `(writing_id, slug)` on `writing_tags`.
+- Index `project_tech.slug`.
+- Unique `(project_id, slug)` on `project_tech`.
+- Unique `(profile_id, label)` and `(profile_id, url)` on `social_links`.
+- Index `(profile_id, sort_order)` on `social_links`.
+- Index `media_references.media_asset_id`.
+- Unique `(media_asset_id, resource_type, resource_id, source)` on `media_references`.
+- Unique `media_assets.storage_key`.
+- Unique `media_assets.checksum_sha256` is not required because duplicate uploads are allowed in V1.
+- Index `(admin_id, expires_at)` on `sessions`.
 
 ## API Design
 
@@ -440,6 +504,19 @@ Public list defaults:
 - `limit` defaults to `12` and is capped at `50`.
 - Sort order defaults to `published_at DESC`, then `sort_order ASC`.
 - Responses include pagination metadata: `page`, `limit`, `total`, and `has_more`.
+
+`GET /api/site/home` response rules:
+
+- Return one payload with `profile`, `social_links`, `experiences`, `featured_talks`, `writing`, and `projects`.
+- `social_links`: all links for `profile.id = 1`, sorted by `sort_order ASC`.
+- `experiences`: up to 4 published entries, sorted by `sort_order ASC`.
+- `featured_talks`: up to 4 published talks. Select featured talks first by `sort_order ASC`, then backfill with recent published talks by `published_at DESC` until 4 items.
+- `writing`: up to 5 published writings. Select featured writings first by `sort_order ASC`, then backfill with recent published writings by `published_at DESC` until 5 items.
+- `projects`: up to 4 published projects. Select featured projects first by `sort_order ASC`, then backfill with recent published projects by `published_at DESC` until 4 items.
+- If a module has no published content, return an empty array for that module.
+- The frontend hides optional empty modules except `profile` and Contact.
+- Contact renders from `profile.email` and `social_links`.
+- Backfill never returns duplicate IDs.
 
 Admin authentication API:
 
@@ -516,7 +593,8 @@ Delete semantics:
 - Published rows cannot be deleted directly. They must be archived first.
 - Hard delete is allowed only for `draft` and `archived` rows.
 - Deleting a project or writing entry cascades to its technology or tag rows.
-- Deleting media is blocked while any content row references any of its URLs.
+- Deleting media is blocked while any `media_references` row points at the media asset.
+- Content create/update transactions must refresh `media_references` before returning success.
 
 ## Authentication And Security
 
@@ -649,6 +727,9 @@ src/
   components/
     ui/
     markdown/
+  styles/
+    tokens.css
+    global.css
   lib/
     api.ts
     format.ts
@@ -673,8 +754,13 @@ Frontend UX requirements:
 Visual system requirements:
 
 - V1 supports light mode only. Dark mode is outside version 1.
-- Use `Inter` if available, falling back to `ui-sans-serif`, `system-ui`, `-apple-system`, and `Segoe UI`.
-- Use `JetBrains Mono` or `ui-monospace` for code blocks.
+- Use CSS Modules for component-scoped styles.
+- Use `src/styles/tokens.css` for global CSS custom properties.
+- Use `src/styles/global.css` for reset, base typography, layout primitives, and Markdown prose defaults.
+- Do not use Tailwind or a component library in V1.
+- Use the system font stack: `ui-sans-serif`, `system-ui`, `-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `sans-serif`.
+- Do not load external web fonts in V1.
+- Use `ui-monospace`, `SFMono-Regular`, `Consolas`, `Liberation Mono`, `monospace` for code blocks.
 - Use `lucide-react` for icons.
 - Base page background: `#ffffff`.
 - Main text: `#111827`.
@@ -722,10 +808,15 @@ API errors use consistent JSON:
 {
   "error": {
     "code": "validation_error",
-    "message": "Title is required"
+    "message": "Validation failed",
+    "fields": {
+      "title": "Title is required"
+    }
   }
 }
 ```
+
+`fields` is optional and appears only for field-level validation errors. Keys use request field names so admin forms can map messages directly to inputs.
 
 Recommended error categories:
 
@@ -749,19 +840,29 @@ Backend tests:
 - CSRF token and Origin validation for unsafe admin methods.
 - Login rate limiting.
 - CRUD behavior for projects, writing, talks, and experience.
-- Slug uniqueness.
+- Slug uniqueness for routable content.
+- Slug immutability after publish for routable content.
 - Public APIs only returning `status = 'published'` content whose `published_at` is not in the future.
-- Markdown renderer rejects raw HTML and unsafe links.
+- `GET /api/site/home` featured selection and backfill behavior.
+- Backend stores raw Markdown without rendering or persisting HTML.
+- Content saves rebuild `media_references` from cover/avatar/OG media fields and Markdown image URLs.
+- Media delete is blocked when `media_references` rows exist.
+- Admin preview routes are intercepted by Go, require a valid session, and send `X-Robots-Tag: noindex, nofollow`.
 - Upload size, MIME sniffing, image decode, pixel-dimension, path traversal, and derivative-generation restrictions.
 - SEO metadata injection for homepage and detail routes.
+- SEO injection escapes text and attribute values.
 - SQLite migration and backup routines.
+- Required database indexes exist in migrations.
 
 Frontend tests:
 
 - Public homepage renders key sections from API data.
 - Admin login handles success and failure.
 - Admin forms validate required fields.
+- Admin forms render field-level validation errors from `error.fields`.
 - Markdown preview renders body content.
+- Markdown renderer rejects raw HTML and unsafe links.
+- Public Markdown pages and admin Markdown preview use the same renderer.
 - Draft, archived, and future-dated content is not shown on the public site.
 - Admin unsafe mutations send `X-CSRF-Token`.
 - Loading, empty, and error states render for public lists and admin tables.
@@ -780,15 +881,15 @@ confirm homepage no longer shows project
 
 ## Delivery Sequence
 
-1. Scaffold Go server, React app, SQLite migrations, config loading, and baseline test commands.
+1. Scaffold Go server, React app, CSS Modules setup, global tokens, SQLite migrations, config loading, and baseline test commands.
 2. Implement auth, session middleware, CSRF/Origin checks, login rate limiting, and their backend tests.
-3. Implement SQLite migration helpers, WAL settings, backup command, and migration/backup tests.
+3. Implement SQLite migration helpers, required indexes, WAL settings, backup command, and migration/backup tests.
 4. Implement profile and social links APIs with admin/public tests.
-5. Implement projects, writing, talks, experience, status transitions, tags/tech stacks, and their API tests.
-6. Implement media upload, image validation, derivative generation, reference blocking on delete, and upload security tests.
+5. Implement projects, writing, talks, experience, status transitions, slug immutability, tags/tech stacks, and their API tests.
+6. Implement media upload, image validation, derivative generation, `media_references`, reference blocking on delete, and upload security tests.
 7. Implement Markdown rendering component, sanitizer schema, admin preview pages, and Markdown XSS tests.
 8. Implement admin pages for managing content, including slug conflict handling, status changes, media picker, and preview.
-9. Implement public pages, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, and frontend route tests.
+9. Implement public pages, home API fallback behavior, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, and frontend route tests.
 10. Add production build scripts, deployment notes, and final end-to-end tests.
 
 ## Implementation Defaults
@@ -796,6 +897,9 @@ confirm homepage no longer shows project
 Use these defaults unless an approved design change explicitly replaces them:
 
 - Frontend: Vite, React, React Router, TypeScript.
+- Styling: CSS Modules plus global CSS variables in `src/styles/tokens.css`.
+- Fonts: system font stack only, no external web fonts.
 - Backend: Go `net/http`, `chi`, `database/sql`, SQLite, SQL migration files.
 - Reordering: up/down buttons in admin list rows.
-- Uploads: PNG, JPG, JPEG, and WebP only.
+- Upload inputs: PNG, JPG, JPEG, and WebP only.
+- Upload derivatives: JPEG for content imagery and PNG for avatar derivatives needing transparency.
