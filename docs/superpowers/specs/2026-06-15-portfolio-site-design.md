@@ -59,6 +59,7 @@ portfolio-server
 data/
   portfolio.db
   uploads/
+  private_uploads/
 web/
   dist/
 .env
@@ -75,11 +76,25 @@ ADMIN_PASSWORD
 SESSION_SECRET
 DATABASE_PATH
 UPLOADS_DIR
+PRIVATE_UPLOADS_DIR
 SESSION_TTL_HOURS
 SESSION_IDLE_TIMEOUT_MINUTES
 ```
 
 `PUBLIC_BASE_URL` is the canonical public origin, such as `https://example.com`. It is used to build canonical URLs, Open Graph URLs, sitemap entries, and absolute media URLs.
+
+`UPLOADS_DIR` stores public normalized derivatives only. `PRIVATE_UPLOADS_DIR` stores raw upload temp files during processing and is never served over HTTP. Raw files are deleted after processing completes, whether it succeeds or fails.
+
+HTTP route priority:
+
+1. `/api/*`.
+2. `/uploads/*`.
+3. `/sitemap.xml`.
+4. `/robots.txt`.
+5. `/admin/preview/*`.
+6. React SPA fallback for public and admin client routes.
+
+Routes 1-5 must be registered before the React fallback.
 
 ## SQLite Operations
 
@@ -104,6 +119,7 @@ Migration rules:
 Backup rules:
 
 - Back up both `data/portfolio.db` and `data/uploads/`.
+- Do not back up `data/private_uploads/`; it contains only temporary raw upload files.
 - Use SQLite online backup API or `VACUUM INTO` for database snapshots instead of copying the live database file directly.
 - Acquire an application-level backup mutex that blocks content writes and uploads during backup.
 - Snapshot the database first, then copy `uploads/` while writes remain blocked.
@@ -310,6 +326,7 @@ Slug rules:
 - `seo_title`
 - `seo_description`
 - `og_image_media_id`
+- `updated_at`
 
 `profile` constraints:
 
@@ -347,6 +364,7 @@ Slug rules:
 
 - `id`
 - `admin_id`
+- `session_token_hash`
 - `csrf_token_hash`
 - `created_at`
 - `last_seen_at`
@@ -505,6 +523,8 @@ Writing tag model:
 - Markdown image inserts use the internal syntax `media://asset/{id}/{variant}`.
 - Allowed Markdown variants are `content`, `cover`, `card`, and `avatar`.
 - Content saves parse `media://asset/{id}/{variant}` references, verify that each media asset and variant exists, and store `source = 'markdown'` references.
+- `media_references` tracks asset-level references only. It intentionally does not store the variant.
+- Variant usage remains in `content_md` and is re-parsed when content is saved.
 - Public and admin content APIs return raw Markdown plus a `media` map that resolves referenced media IDs and variants to public derivative URLs.
 - Public APIs expand media IDs and references into derivative URLs where needed; database content rows do not store mutable public media URLs.
 - User-entered `/uploads/*` Markdown image URLs are rejected in V1.
@@ -565,6 +585,7 @@ Required indexes and constraints:
 - Unique `(media_asset_id, resource_type, resource_id, source)` on `media_references`.
 - Unique `media_assets.storage_key`.
 - Unique `media_assets.checksum_sha256` is not required because duplicate uploads are allowed in V1.
+- Unique `sessions.session_token_hash`.
 - Index `(admin_id, expires_at)` on `sessions`.
 
 ## API Design
@@ -661,10 +682,24 @@ Admin profile API semantics:
 
 - `GET /api/admin/profile` returns the singleton profile row with nested `social_links`.
 - `PUT /api/admin/profile` accepts profile fields plus a full ordered `social_links` array.
+- `GET /api/admin/profile` returns an `ETag` derived from `profile.updated_at`.
+- `PUT /api/admin/profile` requires `If-Match` with the latest profile `ETag`.
+- If `If-Match` is missing, return `validation_error`.
+- If `If-Match` does not match the current profile version, return `409 conflict`.
 - Each `social_links` item can include an existing `id`; items without `id` are created.
 - Existing links omitted from the submitted array are hard-deleted.
 - Profile and social link changes are saved in one transaction.
 - `GET /api/site/profile` also returns `social_links` for the public Contact section.
+
+Admin tag and technology semantics:
+
+- V1 has no standalone admin UI or CRUD API for `tags` and `techs`.
+- Writing forms submit an ordered list of tag names.
+- Project forms submit an ordered list of technology names.
+- On save, the backend normalizes each name to a slug, upserts missing `tags` or `techs` rows by slug, and rewrites the join rows in the submitted order.
+- If a submitted name normalizes to an existing slug with a different display name, the existing display name is reused in V1.
+- Renaming, merging, and deleting global `tags` or `techs` are outside V1.
+- Orphaned global `tags` and `techs` can remain in the database; they are not returned by public APIs unless joined to published content.
 
 Admin list defaults:
 
@@ -674,6 +709,22 @@ Admin list defaults:
 - `q` searches title, summary, excerpt, or file name depending on resource.
 
 All admin APIs require a valid session. Public APIs only return published content whose `published_at` is not in the future.
+
+Reorder semantics:
+
+- `PATCH /api/admin/:resource/reorder` accepts a full ordered list:
+
+```json
+{
+  "ordered_ids": [12, 7, 9]
+}
+```
+
+- Allowed resources are `experience`, `projects`, `writing`, and `talks`.
+- `ordered_ids` must contain exactly the IDs in the current filtered admin list scope for that resource.
+- The server updates all affected rows in one transaction.
+- The server normalizes `sort_order` to consecutive integers starting at `10` and stepping by `10`.
+- If IDs are missing, duplicated, or unknown, return `validation_error` with field errors on `ordered_ids`.
 
 Status update semantics:
 
@@ -693,6 +744,124 @@ Delete semantics:
 - Deleting media is blocked while any `media_references` row points at the media asset.
 - Content create/update transactions must refresh `media_references` before returning success.
 
+## Response Schemas
+
+Home response shape:
+
+```json
+{
+  "profile": {
+    "name": "Jinrun Hu",
+    "headline": "I build AI products, design systems, and developer tools.",
+    "summary": "Short public summary.",
+    "avatar": {
+      "id": 1,
+      "url": "/uploads/ab/cd/avatar.png",
+      "width": 400,
+      "height": 400
+    },
+    "email": "hello@example.com"
+  },
+  "social_links": [
+    {
+      "id": 1,
+      "label": "GitHub",
+      "url": "https://github.com/example",
+      "icon": "github",
+      "sort_order": 10
+    }
+  ],
+  "experiences": [],
+  "featured_talks": [],
+  "writing": [],
+  "projects": []
+}
+```
+
+Project detail response shape:
+
+```json
+{
+  "project": {
+    "id": 12,
+    "title": "AI Knowledge Base",
+    "slug": "ai-knowledge-base",
+    "summary": "RAG-powered knowledge base.",
+    "content_md": "![Cover](media://asset/42/content)",
+    "cover": {
+      "id": 42,
+      "url": "/uploads/ab/cd/cover.jpg",
+      "width": 1200,
+      "height": 675
+    },
+    "techs": [
+      {
+        "name": "React",
+        "slug": "react",
+        "sort_order": 10
+      }
+    ],
+    "published_at": "2026-06-15T00:00:00Z"
+  },
+  "media": {
+    "42": {
+      "content": "/uploads/ab/cd/content.jpg",
+      "cover": "/uploads/ab/cd/cover.jpg",
+      "card": "/uploads/ab/cd/card.jpg"
+    }
+  }
+}
+```
+
+Admin project edit response shape:
+
+```json
+{
+  "project": {
+    "id": 12,
+    "title": "AI Knowledge Base",
+    "slug": "ai-knowledge-base",
+    "summary": "RAG-powered knowledge base.",
+    "content_md": "![Cover](media://asset/42/content)",
+    "cover_media_id": 42,
+    "og_image_media_id": 42,
+    "status": "draft",
+    "featured": false,
+    "sort_order": 10,
+    "published_at": null,
+    "techs": [
+      {
+        "name": "React",
+        "slug": "react",
+        "sort_order": 10
+      }
+    ],
+    "updated_at": "2026-06-15T00:00:00Z"
+  },
+  "media": {
+    "42": {
+      "content": "/uploads/ab/cd/content.jpg",
+      "cover": "/uploads/ab/cd/cover.jpg",
+      "card": "/uploads/ab/cd/card.jpg"
+    }
+  }
+}
+```
+
+Paginated list response shape:
+
+```json
+{
+  "items": [],
+  "pagination": {
+    "page": 1,
+    "limit": 12,
+    "total": 0,
+    "has_more": false
+  }
+}
+```
+
 ## Authentication And Security
 
 Use server-side sessions with a hardened cookie. Cookie-based admin APIs must include CSRF protection for every unsafe method.
@@ -709,7 +878,16 @@ admin UI fetches CSRF token
 admin API checks session, CSRF token, and Origin on every unsafe request
 ```
 
-Security uses the global runtime configuration values defined in the deployment section. The first startup can create the administrator from `ADMIN_EMAIL` and `ADMIN_PASSWORD` if no admin exists. Passwords must be stored as bcrypt hashes.
+Security uses the global runtime configuration values defined in the deployment section.
+
+Admin bootstrap rules:
+
+- Bootstrap from `ADMIN_EMAIL` and `ADMIN_PASSWORD` only when the `admins` table has no rows.
+- Startup never modifies an existing admin email or password from environment variables.
+- `ADMIN_PASSWORD` must be at least 16 characters.
+- Passwords are stored only as bcrypt hashes.
+- In production, startup logs a warning if `ADMIN_PASSWORD` remains set after the first admin has been created.
+- Password rotation after bootstrap is handled by an authenticated admin flow, not by changing environment variables.
 
 Session cookie requirements:
 
@@ -721,7 +899,8 @@ Session cookie requirements:
 - Absolute expiration defaults to `12h`.
 - Idle timeout defaults to `2h`.
 - Store `created_at`, `last_seen_at`, `expires_at`, and `revoked_at` server-side.
-- Rotate the session ID after successful login and after session renewal.
+- Store only `session_token_hash` server-side. The cookie contains the raw random session token.
+- Rotate the session token after successful login and after session renewal.
 - Logout must set `revoked_at`, delete the server-side session, and clear the cookie with an expired `Set-Cookie`.
 
 CSRF and Origin requirements:
@@ -784,6 +963,16 @@ Markdown storage and rendering rules:
 - Escape code blocks and inline code.
 - Allow only expected block and inline elements: headings, paragraphs, lists, blockquotes, tables, code, pre, strong, emphasis, links, images, and horizontal rules.
 
+Markdown image rendering order:
+
+1. Parse Markdown with `react-markdown`.
+2. Use a custom image renderer for `img` nodes.
+3. The custom renderer accepts only `media://asset/{id}/{variant}` values.
+4. The renderer resolves `media://` through the API-provided media map to a same-origin derivative URL.
+5. The renderer rejects missing media IDs, unknown variants, raw `/uploads/*` URLs, remote URLs, `data:` URLs, and inline SVG.
+6. The resolved same-origin URL is then passed through the same sanitization allowlist as the rest of the rendered output.
+7. The original Markdown `src` is never emitted directly into the DOM.
+
 Link rules:
 
 - Allow `http`, `https`, `mailto`, and same-origin relative URLs.
@@ -811,8 +1000,9 @@ Upload rules:
 - Reject images larger than `6000 x 6000` pixels or `24MP`.
 - Generate cryptographically random file names and derive extensions from the validated image type.
 - Ignore user-provided file paths and prevent path traversal with `path.Clean`, base-name checks, and an uploads-root containment check.
-- Store files under `data/uploads/`.
-- Serve files under `/uploads/*` through a Go file handler, not by exposing arbitrary filesystem paths.
+- Store raw upload temp files under `data/private_uploads/` and delete them after derivative generation succeeds or fails.
+- Store only normalized public derivatives under `data/uploads/`.
+- Serve only normalized derivatives under `/uploads/*` through a Go file handler, not by exposing arbitrary filesystem paths.
 - Set exact `Content-Type` and `X-Content-Type-Options: nosniff` when serving uploads.
 - Do not serve raw uploads publicly.
 - Strip EXIF and other metadata by generating normalized public derivatives; reject the upload if normalization fails.
@@ -961,11 +1151,14 @@ Backend tests:
 - Admin login and logout.
 - Session-protected admin endpoints.
 - Session expiration, session rotation, and logout invalidation.
+- Database stores `session_token_hash`, not raw session tokens.
+- Admin bootstrap creates the first admin only when no admin exists and never overwrites an existing admin.
 - CSRF token and Origin validation for unsafe admin methods.
 - Login rate limiting.
 - UTC timestamp storage, RFC 3339 API serialization, and injectable-clock publishing behavior.
 - Profile API saves nested `social_links` transactionally.
 - CRUD behavior for projects, writing, talks, and experience.
+- Reorder endpoints validate full `ordered_ids` payloads and normalize `sort_order` transactionally.
 - Slug uniqueness for routable content.
 - Slug immutability after publish for routable content.
 - Hard delete is blocked for published and archived rows, and allowed only for never-published drafts.
@@ -977,12 +1170,15 @@ Backend tests:
 - Media delete is blocked when `media_references` rows exist.
 - `media_assets.variants_json` is generated with the required variant keys and immutable derivative paths.
 - Admin preview routes are intercepted by Go, require a valid session, and send `X-Robots-Tag: noindex, nofollow`.
+- HTTP route priority serves `/api/*`, `/uploads/*`, `/sitemap.xml`, `/robots.txt`, and `/admin/preview/*` before React fallback.
+- Raw upload temp files are never served and are removed after processing.
 - Upload size, MIME sniffing, image decode, pixel-dimension, path traversal, and derivative-generation restrictions.
 - SEO metadata injection for homepage, list pages, contact, and detail routes.
 - SEO injection escapes text and attribute values.
 - `/robots.txt` and `/sitemap.xml` output.
 - Cache headers for `web/dist/assets/*`, meta-injected HTML, API responses, and `/uploads/*` derivatives.
 - Production CSP header contains the required directives.
+- Home, project detail, admin edit, error, and paginated list response schemas.
 - SQLite migration and backup routines.
 - Required database indexes exist in migrations.
 
@@ -1021,7 +1217,7 @@ confirm homepage no longer shows project
 3. Implement SQLite migration helpers, required indexes, WAL settings, backup command, and migration/backup tests.
 4. Implement profile and social links APIs with admin/public tests.
 5. Implement projects, writing, talks, experience, status transitions, slug immutability, tags/tech stacks, and their API tests.
-6. Implement media upload, image validation, derivative generation, `media_references`, reference blocking on delete, and upload security tests.
+6. Implement media upload, private raw temp handling, image validation, derivative generation, `media_references`, reference blocking on delete, and upload security tests.
 7. Implement Markdown rendering component, sanitizer schema, admin preview pages, and Markdown XSS tests.
 8. Implement admin pages for managing content, including slug conflict handling, status changes, media picker, and preview.
 9. Implement public pages, home API fallback behavior, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, robots.txt, caching headers, CSP, and frontend route tests.
