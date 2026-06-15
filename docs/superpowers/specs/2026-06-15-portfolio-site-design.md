@@ -64,6 +64,23 @@ web/
 .env
 ```
 
+Required runtime configuration:
+
+```text
+APP_ORIGIN
+PUBLIC_BASE_URL
+SITE_NAME
+ADMIN_EMAIL
+ADMIN_PASSWORD
+SESSION_SECRET
+DATABASE_PATH
+UPLOADS_DIR
+SESSION_TTL_HOURS
+SESSION_IDLE_TIMEOUT_MINUTES
+```
+
+`PUBLIC_BASE_URL` is the canonical public origin, such as `https://example.com`. It is used to build canonical URLs, Open Graph URLs, sitemap entries, and absolute media URLs.
+
 ## SQLite Operations
 
 Version 1 supports a single running Go instance. Multi-instance writes are outside the first release.
@@ -123,16 +140,20 @@ The homepage must fetch one aggregated payload from `GET /api/site/home` so the 
 
 ## SEO And Share Metadata
 
-The public app uses a Vite SPA, but portfolio detail pages still need reliable metadata for search and social sharing. Go must dynamically inject metadata into the built `index.html` for public routes before serving it.
+The public app uses a Vite SPA, but public pages still need reliable metadata for search and social sharing. Go must dynamically inject metadata into the built `index.html` for public routes before serving it.
 
 Metadata injection applies to:
 
 ```text
 /
 /bio
+/talks
 /talks/:slug
+/writing
 /writing/:slug
+/projects
 /projects/:slug
+/contact
 ```
 
 Content tables that can render detail pages store:
@@ -143,14 +164,23 @@ Content tables that can render detail pages store:
 
 `profile` stores the default site metadata for homepage and fallback cases.
 
+Static list pages use route-specific defaults derived from `SITE_NAME` and profile metadata, such as `Projects | {SITE_NAME}`, `Writing | {SITE_NAME}`, `Talks | {SITE_NAME}`, and `Contact | {SITE_NAME}`.
+
 Go route handling:
 
 - Load the matching profile, project, writing, or talk by route and slug.
 - Return a `404` page with no private data when the slug is missing or unpublished.
 - Inject `<title>`, description, canonical URL, Open Graph tags, and Twitter card tags.
+- HTML-escape every injected text value.
+- Attribute-escape every injected attribute value, including URLs.
+- Validate injected URLs before output: canonical and Open Graph URLs must be absolute URLs derived from `PUBLIC_BASE_URL`; image URLs must be same-origin upload URLs or validated absolute `https` URLs.
+- Never inject raw database strings into HTML by direct string concatenation.
 - Fall back from `seo_title` to content title.
 - Fall back from `seo_description` to excerpt or summary.
 - Fall back from `og_image_url` to cover image, then profile avatar.
+- Generate `sitemap.xml` from `PUBLIC_BASE_URL` and published routes.
+- Exclude draft, archived, future-dated, and admin preview routes from sitemap output.
+- Serve `/sitemap.xml` and `/robots.txt` from Go.
 
 ## Admin Site
 
@@ -177,10 +207,19 @@ Admin capabilities:
 - Upload media and copy the generated URL.
 - Preview Markdown before saving article and project content.
 - Auto-generate slugs from titles and show conflict errors before publish.
-- Provide a public preview action before publishing content.
+- Provide a "preview as public page" action before publishing content.
 - Provide a media picker for cover images and inline Markdown images.
 
 Version 1 uses explicit up/down controls for reordering. Drag-and-drop is outside version 1.
+
+Admin preview rules:
+
+- V1 preview is admin-session-only.
+- Preview routes live under `/admin/preview/:resource/:id`.
+- Preview routes require a valid admin session, CSRF is not required for the read-only preview request, and responses must send `X-Robots-Tag: noindex, nofollow`.
+- Preview can render draft, archived, and future-dated content only for the authenticated admin.
+- Preview URLs are not shareable outside the logged-in admin browser.
+- Signed public preview tokens are outside version 1.
 
 ## Data Model
 
@@ -202,18 +241,23 @@ media_assets
 sessions
 ```
 
-Publishable content fields:
+All publishable content fields:
 
 - `id`
 - `slug` where the item has a detail page
 - `status` as `draft`, `published`, or `archived`
-- `featured`
 - `sort_order`
 - `published_at`
 - `created_at`
 - `updated_at`
 
 The publishable content tables are `experiences`, `talks`, `writings`, and `projects`. Public APIs only return rows where `status = 'published'` and `published_at <= now`.
+
+Homepage-featured content fields:
+
+- `featured`
+
+The homepage-featured content tables are `talks`, `writings`, and `projects`. `experiences` are ordered timeline entries and do not use `featured`.
 
 `featured = true` only affects homepage placement. It never makes draft or future-dated content public.
 
@@ -236,6 +280,24 @@ Publishing rules:
 - `seo_title`
 - `seo_description`
 - `og_image_url`
+
+`social_links` stores contact and social destinations:
+
+- `id`
+- `profile_id`
+- `label`
+- `url`
+- `icon`
+- `sort_order`
+- `created_at`
+- `updated_at`
+
+`social_links` constraints:
+
+- Unique `(profile_id, label)`.
+- Unique `(profile_id, url)`.
+- `sort_order` controls Contact display order.
+- Deleting a social link is a hard delete because it has no dependent content.
 
 `admins` stores:
 
@@ -282,6 +344,21 @@ Publishing rules:
 - `sort_order`
 - `published_at`
 
+`project_tech` stores project technology tags:
+
+- `id`
+- `project_id`
+- `name`
+- `slug`
+- `sort_order`
+
+`project_tech` constraints:
+
+- Unique `(project_id, slug)`.
+- `sort_order` controls tag display order on project cards and detail pages.
+- Deleting a project cascades to its `project_tech` rows.
+- Removing a technology from a project hard-deletes only that join row.
+
 `writings` stores:
 
 - `title`
@@ -296,6 +373,21 @@ Publishing rules:
 - `featured`
 - `sort_order`
 - `published_at`
+
+`writing_tags` stores article tags:
+
+- `id`
+- `writing_id`
+- `name`
+- `slug`
+- `sort_order`
+
+`writing_tags` constraints:
+
+- Unique `(writing_id, slug)`.
+- `sort_order` controls tag display order on writing cards and detail pages.
+- Deleting a writing entry cascades to its `writing_tags` rows.
+- Removing a tag from an article hard-deletes only that join row.
 
 `talks` stores:
 
@@ -368,6 +460,7 @@ GET    /api/admin/experience?page=:page&limit=:limit&status=:status&q=:q
 POST   /api/admin/experience
 GET    /api/admin/experience/:id
 PUT    /api/admin/experience/:id
+PATCH  /api/admin/experience/:id/status
 DELETE /api/admin/experience/:id
 PATCH  /api/admin/experience/reorder
 
@@ -375,6 +468,7 @@ GET    /api/admin/projects?page=:page&limit=:limit&status=:status&q=:q&tech=:tec
 POST   /api/admin/projects
 GET    /api/admin/projects/:id
 PUT    /api/admin/projects/:id
+PATCH  /api/admin/projects/:id/status
 DELETE /api/admin/projects/:id
 PATCH  /api/admin/projects/reorder
 
@@ -382,6 +476,7 @@ GET    /api/admin/writing?page=:page&limit=:limit&status=:status&q=:q&tag=:tag
 POST   /api/admin/writing
 GET    /api/admin/writing/:id
 PUT    /api/admin/writing/:id
+PATCH  /api/admin/writing/:id/status
 DELETE /api/admin/writing/:id
 PATCH  /api/admin/writing/reorder
 
@@ -389,6 +484,7 @@ GET    /api/admin/talks?page=:page&limit=:limit&status=:status&q=:q
 POST   /api/admin/talks
 GET    /api/admin/talks/:id
 PUT    /api/admin/talks/:id
+PATCH  /api/admin/talks/:id/status
 DELETE /api/admin/talks/:id
 PATCH  /api/admin/talks/reorder
 
@@ -406,6 +502,22 @@ Admin list defaults:
 
 All admin APIs require a valid session. Public APIs only return published content whose `published_at` is not in the future.
 
+Status update semantics:
+
+- `PATCH /api/admin/:resource/:id/status` accepts `status` and optional `published_at`.
+- Allowed resources are `experience`, `projects`, `writing`, and `talks`.
+- Publishing sets `status = 'published'`; if `published_at` is omitted, the server sets it to current server time.
+- Drafting sets `status = 'draft'` and keeps existing `published_at` for audit history.
+- Archiving sets `status = 'archived'` and keeps existing `published_at`.
+
+Delete semantics:
+
+- `DELETE` is a hard delete.
+- Published rows cannot be deleted directly. They must be archived first.
+- Hard delete is allowed only for `draft` and `archived` rows.
+- Deleting a project or writing entry cascades to its technology or tag rows.
+- Deleting media is blocked while any content row references any of its URLs.
+
 ## Authentication And Security
 
 Use server-side sessions with a hardened cookie. Cookie-based admin APIs must include CSRF protection for every unsafe method.
@@ -422,20 +534,7 @@ admin UI fetches CSRF token
 admin API checks session, CSRF token, and Origin on every unsafe request
 ```
 
-Configuration:
-
-```text
-ADMIN_EMAIL
-ADMIN_PASSWORD
-SESSION_SECRET
-DATABASE_PATH
-UPLOADS_DIR
-APP_ORIGIN
-SESSION_TTL_HOURS
-SESSION_IDLE_TIMEOUT_MINUTES
-```
-
-The first startup can create the administrator from `ADMIN_EMAIL` and `ADMIN_PASSWORD` if no admin exists. Passwords must be stored as bcrypt hashes.
+Security uses the global runtime configuration values defined in the deployment section. The first startup can create the administrator from `ADMIN_EMAIL` and `ADMIN_PASSWORD` if no admin exists. Passwords must be stored as bcrypt hashes.
 
 Session cookie requirements:
 
@@ -481,6 +580,11 @@ Article and project body content is public, so Markdown rendering must be treate
 Markdown storage and rendering rules:
 
 - Store the original Markdown in `content_md`.
+- V1 renders Markdown in the React frontend only.
+- The backend stores and returns raw Markdown; it does not pre-render or persist HTML.
+- Use one shared React Markdown component for public pages and admin preview.
+- Use `react-markdown`, `remark-gfm`, and `rehype-sanitize` with a project-owned allowlist schema.
+- Do not enable `rehype-raw`.
 - Disable raw HTML in Markdown.
 - Render admin preview and public pages with the same Markdown configuration.
 - Sanitize rendered output with an allowlist before inserting it into the DOM.
@@ -507,6 +611,7 @@ Upload rules:
 - Allow PNG, JPG, JPEG, and WebP uploads.
 - Disable SVG uploads in version 1.
 - Enforce a default maximum upload size of `5MB`.
+- Use Go standard `image/jpeg` and `image/png`, `golang.org/x/image/webp` for WebP decode, and `github.com/disintegration/imaging` for resizing and cropping.
 - Sniff MIME type server-side and do not trust the browser-provided `Content-Type`.
 - Verify that the file extension, sniffed MIME type, and decoded image format agree.
 - Decode the image server-side to confirm it is a valid image.
@@ -516,7 +621,10 @@ Upload rules:
 - Store files under `data/uploads/`.
 - Serve files under `/uploads/*` through a Go file handler, not by exposing arbitrary filesystem paths.
 - Set exact `Content-Type` and `X-Content-Type-Options: nosniff` when serving uploads.
+- Do not serve raw uploads publicly.
 - Strip EXIF and other metadata by generating normalized public derivatives; reject the upload if normalization fails.
+- V1 derivative outputs are JPEG files for content covers/cards and PNG files for square avatar thumbnails that require transparency.
+- WebP uploads are accepted as input, decoded server-side, and re-encoded to JPEG or PNG derivatives. V1 does not generate WebP derivatives.
 - Generate standard derivatives for common frontend usage: original-bounded image, `1200x675` cover, `800x450` card thumbnail, and `400x400` avatar thumbnail.
 - Store derivative paths and dimensions in `media_assets`.
 - Keep cover images at a `16:9` target ratio unless a specific module defines another ratio.
@@ -561,6 +669,27 @@ Frontend UX requirements:
 - Use semantic landmarks: `header`, `nav`, `main`, `section`, `article`, and `footer`.
 - Ensure all icon-only buttons have accessible labels.
 - Respect reduced-motion preferences for transitions.
+
+Visual system requirements:
+
+- V1 supports light mode only. Dark mode is outside version 1.
+- Use `Inter` if available, falling back to `ui-sans-serif`, `system-ui`, `-apple-system`, and `Segoe UI`.
+- Use `JetBrains Mono` or `ui-monospace` for code blocks.
+- Use `lucide-react` for icons.
+- Base page background: `#ffffff`.
+- Main text: `#111827`.
+- Secondary text: `#4b5563`.
+- Muted text: `#6b7280`.
+- Border: `#e5e7eb`.
+- Subtle surface: `#f9fafb`.
+- Primary action: `#2563eb`; primary hover: `#1d4ed8`.
+- Success accent: `#10b981`; warning accent: `#f59e0b`; danger accent: `#dc2626`.
+- Use CSS variables for all color tokens and spacing tokens.
+- Content width maxes at `1160px` with responsive horizontal padding.
+- Cards use `8px` radius, `1px` border, no heavy shadows.
+- Buttons use `6px` radius, visible focus rings, and consistent icon spacing.
+- Talk, writing, and project cards use fixed media aspect ratios so rows stay aligned.
+- Avoid decorative gradients and oversized marketing-style hero composition; the first viewport remains a usable portfolio surface.
 
 ## Backend Implementation Shape
 
@@ -651,13 +780,16 @@ confirm homepage no longer shows project
 
 ## Delivery Sequence
 
-1. Scaffold Go server, React app, SQLite migrations, and basic config.
-2. Implement auth, session middleware, and admin bootstrap.
-3. Implement profile and social links.
-4. Implement projects, writing, talks, experience, and media upload APIs.
-5. Build admin pages for managing content.
-6. Build public pages and detail routes.
-7. Add tests and production build/deploy scripts.
+1. Scaffold Go server, React app, SQLite migrations, config loading, and baseline test commands.
+2. Implement auth, session middleware, CSRF/Origin checks, login rate limiting, and their backend tests.
+3. Implement SQLite migration helpers, WAL settings, backup command, and migration/backup tests.
+4. Implement profile and social links APIs with admin/public tests.
+5. Implement projects, writing, talks, experience, status transitions, tags/tech stacks, and their API tests.
+6. Implement media upload, image validation, derivative generation, reference blocking on delete, and upload security tests.
+7. Implement Markdown rendering component, sanitizer schema, admin preview pages, and Markdown XSS tests.
+8. Implement admin pages for managing content, including slug conflict handling, status changes, media picker, and preview.
+9. Implement public pages, detail routes, mobile layouts, dynamic SEO meta injection, sitemap, and frontend route tests.
+10. Add production build scripts, deployment notes, and final end-to-end tests.
 
 ## Implementation Defaults
 
