@@ -16,6 +16,7 @@ This design covers architecture and migration strategy only. It does not impleme
 - Keep the existing Go repository boundaries for `auth`, `profile`, `content`, `media`, and `site`.
 - Keep media derivatives on local disk for this stage. PostgreSQL stores media metadata and references only.
 - Defer MinIO object storage migration to a separate future design.
+- Treat `BlobStore` as a separate delivery point from the PostgreSQL migration so database work and media storage refactoring do not expand each other's risk.
 - Replace `DATABASE_PATH` with `DATABASE_URL`.
 - Use real PostgreSQL in backend storage tests through `TEST_DATABASE_URL`.
 
@@ -115,6 +116,8 @@ Local development may use `sslmode=disable` for the LAN PostgreSQL service. Prod
 
 `DATABASE_PATH` becomes unsupported after the migration. Startup should fail with a clear message if `DATABASE_URL` is missing.
 
+Configuration logging must never print the full `DATABASE_URL`. `Config.String()` and startup logs should redact credentials and query parameters, for example `db=postgres://postgres@192.168.1.20:19588/portfolio`.
+
 ## Database Connection Behavior
 
 `internal/db.Open` should be redesigned around these responsibilities:
@@ -163,7 +166,11 @@ Migration rules:
 - Run migrations at startup before serving HTTP traffic.
 - Apply migration files in lexical order.
 - Wrap each migration file in a transaction.
-- Use a PostgreSQL advisory lock around the migration run so concurrent app startups cannot apply the same migration twice.
+- Use a PostgreSQL session-level advisory lock around the full migration run so concurrent app startups cannot apply the same migration twice.
+- Pin migrations to one physical connection with `db.Conn(ctx)`.
+- Acquire the advisory lock on that pinned connection before reading applied migrations.
+- Start each migration transaction with `conn.BeginTx(ctx, nil)` so the lock and all migration transactions stay on the same PostgreSQL connection.
+- Release the lock with `pg_advisory_unlock` in a `defer`; closing the pinned connection is the final fallback if unlock fails.
 - Record the migration version after the SQL file succeeds.
 - Fail startup if any migration fails.
 
@@ -226,6 +233,28 @@ CURRENT_TIMESTAMP                -> now()
 
 `media_assets.variants_json` should be renamed to `variants` during the PostgreSQL redesign. Go API structs can keep returning `variants` as they do now.
 
+### Required Unique Constraints
+
+The PostgreSQL schema must preserve these uniqueness guarantees from the current SQLite schema:
+
+```sql
+ALTER TABLE admins ADD CONSTRAINT admins_email_key UNIQUE (email);
+ALTER TABLE media_assets ADD CONSTRAINT media_assets_storage_key_key UNIQUE (storage_key);
+ALTER TABLE talks ADD CONSTRAINT talks_slug_key UNIQUE (slug);
+ALTER TABLE writings ADD CONSTRAINT writings_slug_key UNIQUE (slug);
+ALTER TABLE projects ADD CONSTRAINT projects_slug_key UNIQUE (slug);
+ALTER TABLE tags ADD CONSTRAINT tags_slug_key UNIQUE (slug);
+ALTER TABLE techs ADD CONSTRAINT techs_slug_key UNIQUE (slug);
+ALTER TABLE writing_tags ADD CONSTRAINT writing_tags_writing_id_tag_id_key UNIQUE (writing_id, tag_id);
+ALTER TABLE project_tech ADD CONSTRAINT project_tech_project_id_tech_id_key UNIQUE (project_id, tech_id);
+ALTER TABLE social_links ADD CONSTRAINT social_links_profile_id_label_key UNIQUE (profile_id, label);
+ALTER TABLE social_links ADD CONSTRAINT social_links_profile_id_url_key UNIQUE (profile_id, url);
+ALTER TABLE media_references ADD CONSTRAINT media_references_unique_usage UNIQUE (media_asset_id, resource_type, resource_id, source);
+ALTER TABLE sessions ADD CONSTRAINT sessions_session_token_hash_key UNIQUE (session_token_hash);
+```
+
+`schema_migrations.version` and every primary key are already unique through their primary-key constraints.
+
 ### Index Strategy
 
 Required indexes:
@@ -233,17 +262,20 @@ Required indexes:
 ```sql
 CREATE INDEX idx_social_links_profile_sort ON social_links (profile_id, sort_order);
 CREATE INDEX idx_experiences_public_order ON experiences (status, published_at DESC, sort_order);
+CREATE INDEX idx_experiences_home_order ON experiences (status, sort_order, published_at DESC);
 CREATE INDEX idx_talks_public_order ON talks (status, published_at DESC, sort_order);
-CREATE INDEX idx_talks_featured_order ON talks (status, featured, sort_order, published_at DESC);
+CREATE INDEX idx_talks_featured_order ON talks (status, featured DESC, published_at DESC, sort_order);
 CREATE INDEX idx_writings_public_order ON writings (status, published_at DESC, sort_order);
-CREATE INDEX idx_writings_featured_order ON writings (status, featured, sort_order, published_at DESC);
+CREATE INDEX idx_writings_featured_order ON writings (status, featured DESC, published_at DESC, sort_order);
 CREATE INDEX idx_projects_public_order ON projects (status, published_at DESC, sort_order);
-CREATE INDEX idx_projects_featured_order ON projects (status, featured, sort_order, published_at DESC);
+CREATE INDEX idx_projects_featured_order ON projects (status, featured DESC, published_at DESC, sort_order);
 CREATE INDEX idx_writing_tags_tag_id ON writing_tags (tag_id);
 CREATE INDEX idx_project_tech_tech_id ON project_tech (tech_id);
 CREATE INDEX idx_media_references_asset_id ON media_references (media_asset_id);
 CREATE INDEX idx_sessions_admin_expires ON sessions (admin_id, expires_at);
 ```
+
+The featured indexes match homepage ordering for talks, writing, and projects: `ORDER BY featured DESC, published_at DESC, sort_order ASC`. `idx_experiences_home_order` matches the homepage experience ordering: `ORDER BY sort_order ASC, published_at DESC`.
 
 Partial indexes for published content can be added later if query volume requires them. The first PostgreSQL version should prefer straightforward indexes that match the current query patterns.
 
@@ -391,6 +423,7 @@ The PostgreSQL redesign should also remove the highest-impact N+1 storage patter
 Required first-pass optimizations:
 
 - `media.List` should compute `referenced` with `EXISTS` in the list query instead of calling `IsReferenced` once per row.
+- `media.List` should preserve case-insensitive admin search by using `ILIKE` for `file_name` or `lower(file_name) LIKE lower($1)`.
 - Project list queries should fetch projects and project tech terms in batches.
 - Writing list queries should fetch writings and tags in batches.
 - Public list routes should use the same batch hydration path as admin list routes where possible.
@@ -461,13 +494,18 @@ backup/
 Database backup command:
 
 ```text
-pg_dump --format=custom --no-owner --no-acl --file <destination>/database.dump <DATABASE_URL>
+pg_dump --format=custom --no-owner --no-acl --host <host> --port <port> --username <user> --dbname <database> --file <destination>/database.dump
 ```
+
+Do not pass a password-bearing `DATABASE_URL` as a process argument and do not log the full dump command with secrets. Use `PGPASSWORD` in the child process environment, `.pgpass`, or split non-secret connection arguments plus a secret environment variable.
 
 Backup rules:
 
-- Keep the existing application write mutex concept during backup.
-- Block admin writes and media uploads while the backup is running.
+- Introduce a real application write gate before relying on backup consistency.
+- Every profile, content, auth-session mutation that matters for backup consistency, media metadata write, media delete, and media upload path must enter the write gate.
+- Backup acquires the same gate before running `pg_dump` and keeps it until the upload directory copy completes.
+- The application write gate only blocks writes through this Go process. It does not block another service instance, `psql`, or external jobs that write directly to PostgreSQL.
+- For single-process deployment, the write gate is enough for app-level consistency. For multi-process deployment, use maintenance mode, a deployment-level singleton backup job, or PostgreSQL/object-store operational snapshots instead.
 - Run `pg_dump` first.
 - Copy `UPLOADS_DIR` after the database dump while writes remain blocked.
 - Continue excluding `PRIVATE_UPLOADS_DIR`.
@@ -479,7 +517,7 @@ This gives a consistent database and upload-derivative snapshot without introduc
 Restore command shape:
 
 ```text
-pg_restore --clean --if-exists --no-owner --dbname <DATABASE_URL> database.dump
+pg_restore --clean --if-exists --no-owner --host <host> --port <port> --username <user> --dbname <database> database.dump
 ```
 
 Uploads are restored by copying the backed-up `uploads/` tree back to `UPLOADS_DIR`.
@@ -494,11 +532,21 @@ Suggested command:
 go run ./cmd/migrate-sqlite-to-postgres --sqlite data/portfolio.db --postgres "$env:DATABASE_URL"
 ```
 
+The `--postgres` target database must already exist. The command should fail fast with a clear message when it cannot connect to the target database.
+
+If the migration command is expected to create the target database, it needs a separate maintenance connection:
+
+```text
+go run ./cmd/migrate-sqlite-to-postgres --sqlite data/portfolio.db --postgres "$env:DATABASE_URL" --postgres-admin "$env:POSTGRES_ADMIN_URL" --create-database portfolio
+```
+
+`POSTGRES_ADMIN_URL` should connect to an existing maintenance database such as `postgres`, not to the database being created.
+
 Migration flow:
 
 1. Stop the running app or place it in maintenance mode.
 2. Run the current SQLite backup.
-3. Create the PostgreSQL database if it does not exist.
+3. Create the PostgreSQL database beforehand, or provide a maintenance connection through `--postgres-admin` and `--create-database`.
 4. Run PostgreSQL migrations.
 5. Import tables in foreign-key order.
 6. Preserve existing numeric IDs during import.
@@ -543,11 +591,14 @@ Backend storage tests should run against PostgreSQL through `TEST_DATABASE_URL`.
 Recommended test isolation:
 
 - Each test package creates a unique schema.
-- The test connection sets `search_path` to that schema.
+- The test helper sets `search_path` for every pooled connection through connection runtime parameters, for example `options=-c search_path=<schema>,public`.
+- Do not rely on one `SET search_path` statement executed on `*sql.DB`; it only affects whichever pooled connection handled that statement.
 - Migrations run inside that schema.
 - The schema is dropped during cleanup.
 
 This avoids requiring permission to create and drop whole databases while still isolating tests.
+
+If runtime `search_path` parameters are not available in a specific test environment, the fallback is to set `MaxOpenConns(1)`, pin a single `db.Conn(ctx)`, run `SET search_path` on that connection, and run migrations plus repository checks through helpers that use that pinned connection. The preferred path remains runtime parameters because it exercises normal pooled behavior.
 
 Tests that need PostgreSQL should skip with a clear message when `TEST_DATABASE_URL` is missing. CI and local full verification should provide it.
 
@@ -566,6 +617,7 @@ Required test coverage:
 - Public content queries exclude drafts, archived rows, and future published rows.
 - Batch hydration returns project techs and writing tags in the expected order.
 - Media list returns `referenced` state without per-row reference queries.
+- Media list search remains case-insensitive after moving from SQLite `LIKE` to PostgreSQL.
 - Backup command produces a PostgreSQL dump and upload copy.
 
 Frontend tests do not need storage-specific changes unless API response shapes change. This design keeps response shapes stable.
@@ -582,12 +634,17 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 8. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`.
 9. Convert boolean storage from integers to PostgreSQL booleans.
 10. Rename `media_assets.variants_json` to `variants` and store JSONB.
-11. Introduce `LocalBlobStore` behind a `BlobStore` interface while preserving current local upload behavior.
-12. Optimize media, project, and writing list queries to avoid N+1 reads.
-13. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy.
-14. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
-15. Update README deployment and development instructions.
-16. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
+11. Optimize media, project, and writing list queries to avoid N+1 reads.
+12. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate or documented maintenance-mode requirement.
+13. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
+14. Update README deployment and development instructions.
+15. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
+
+Independent media storage delivery point:
+
+1. Introduce `LocalBlobStore` behind a `BlobStore` interface while preserving current local upload behavior.
+2. Keep PostgreSQL media metadata compatible with local blob keys and public `/uploads/*` URLs.
+3. Add `MinIOBlobStore` in a separate future change when object storage migration is approved.
 
 ## Open Review Points
 
