@@ -168,8 +168,12 @@ Migration rules:
 - Wrap each migration file in a transaction.
 - Use a PostgreSQL session-level advisory lock around the full migration run so concurrent app startups cannot apply the same migration twice.
 - Pin migrations to one physical connection with `db.Conn(ctx)`.
-- Acquire the advisory lock on that pinned connection before reading applied migrations.
+- Acquire the advisory lock on that pinned connection before creating or reading `schema_migrations`.
+- Create `schema_migrations` after the advisory lock has been acquired.
 - Start each migration transaction with `conn.BeginTx(ctx, nil)` so the lock and all migration transactions stay on the same PostgreSQL connection.
+- Execute migration SQL statement-by-statement inside each migration transaction. Do not rely on whole-file `Exec` for multi-statement migration files.
+- Use a parser or splitter that understands PostgreSQL comments, quoted strings, and dollar-quoted function bodies. If that is not implemented, require each migration file to contain exactly one SQL statement.
+- Do not switch migrations to `QueryExecModeSimpleProtocol` just to support multi-statement strings; keep normal query execution and make statement boundaries explicit.
 - Release the lock with `pg_advisory_unlock` in a `defer`; closing the pinned connection is the final fallback if unlock fails.
 - Record the migration version after the SQL file succeeds.
 - Fail startup if any migration fails.
@@ -344,6 +348,27 @@ RETURNING id;
 
 `LastInsertId()` must not be used with PostgreSQL.
 
+## Concurrency Rules
+
+PostgreSQL will expose write races that SQLite's single-writer behavior often hides. The migration must make these paths explicitly concurrency-safe.
+
+Profile saves:
+
+- Preserve the `If-Match` behavior for admin profile updates.
+- The profile save transaction must prevent two concurrent requests with the same stale `If-Match` value from both succeeding.
+- Acceptable implementation: `SELECT updated_at FROM profile WHERE id = 1 FOR UPDATE`, compare the ETag while holding the row lock, then update profile and replace social links in the same transaction.
+- Alternative implementation: add a numeric `version` column, return ETags from that version, and `UPDATE profile ... WHERE id = 1 AND version = $oldVersion`, checking affected rows.
+- A stale or concurrently consumed ETag returns the existing `409 conflict` response.
+
+Slug generation:
+
+- Keep slug uniqueness enforced by database unique constraints.
+- Treat pre-insert slug availability checks as advisory only.
+- Project, writing, and talk creation must handle `23505 unique_violation` on the slug constraint by retrying with the next suffix, such as `my-post-2`.
+- Because a PostgreSQL error aborts the current transaction, retry by rolling back the current transaction and starting a fresh attempt, or use an atomic `INSERT ... ON CONFLICT (slug) DO NOTHING RETURNING id` loop inside a transaction.
+- Limit slug retry attempts, for example 10 attempts, and return a conflict or validation error if no available slug is found.
+- Slug updates for drafts need the same collision handling. Published and archived slug immutability rules stay unchanged.
+
 ## Time Handling
 
 Go code should scan nullable timestamps with `sql.NullTime` instead of `sql.NullString`.
@@ -357,6 +382,14 @@ parseTime(string)                 -> remove from database scan paths
 ```
 
 PostgreSQL stores and returns time values as timestamps, while JSON APIs continue exposing RFC 3339 strings.
+
+Timestamp precision and timezone rules:
+
+- Set each PostgreSQL session timezone to UTC through connection parameters, for example `timezone=UTC`, or an after-connect/session initialization hook.
+- Before writing application-generated timestamps, normalize with `value.UTC().Truncate(time.Microsecond)`.
+- Use one stable RFC 3339 microsecond format for API responses and ETag source strings.
+- Profile ETags must be derived from the same normalized value that is written to and read from PostgreSQL, or from a dedicated monotonic `version` column.
+- Tests must cover profile ETag stability across save/read cycles because PostgreSQL stores timestamps at microsecond precision while Go `time.Time` may contain nanoseconds.
 
 ## Boolean Handling
 
@@ -377,6 +410,34 @@ map[string]Variant
 Database writes pass `[]byte` or `string` JSON to PostgreSQL. Database reads scan JSONB into `[]byte` or `string` and unmarshal as today.
 
 No JSONB GIN index is needed in the first PostgreSQL version because the app does not query inside variant JSON.
+
+## Media Reference Maintenance
+
+`media_references` is required system data, not a passive table.
+
+Every profile or content write that can change media usage must rebuild references inside the same database transaction as the owning row update.
+
+Reference sources:
+
+- Profile avatar: `resource_type = 'profile'`, `resource_id = 1`, `source = 'avatar'`.
+- Profile OG image: `resource_type = 'profile'`, `resource_id = 1`, `source = 'og_image'`.
+- Project, writing, and talk cover images: `source = 'cover'`.
+- Project, writing, and talk OG images: `source = 'og_image'`.
+- Markdown images in project and writing bodies: `source = 'markdown'`.
+
+Write flow:
+
+1. Validate explicit media IDs before saving the owning row.
+2. Parse Markdown for `media://asset/{id}/{variant}` references.
+3. Validate each referenced asset exists and the requested variant exists in `media_assets.variants`.
+4. Save the profile/content row.
+5. Delete existing `media_references` for that resource.
+6. Insert the rebuilt reference set.
+7. Commit the transaction.
+
+Reference rebuilding should de-duplicate repeated Markdown references to the same asset/source pair before insert. The unique constraint remains the final guard.
+
+Media deletion must continue checking `media_references` so referenced assets cannot be deleted.
 
 ## Media Blob Storage Abstraction
 
@@ -455,6 +516,14 @@ tags
 techs
 project_tech
 writing_tags
+```
+
+Allowed dynamic column use must also be whitelist-driven. Current homepage summary queries should either be split into three static queries or limited to these table/summary-column pairs:
+
+```text
+talks -> summary
+writings -> excerpt
+projects -> summary
 ```
 
 Repository helpers must never accept arbitrary table or column names from HTTP request values.
@@ -578,6 +647,14 @@ media_references
 
 Sessions are intentionally not imported.
 
+Special import rules:
+
+- The initial PostgreSQL migration creates the singleton `profile` row with `id = 1`.
+- SQLite import must not use a plain `INSERT` for `profile`.
+- Import `profile` with `INSERT ... ON CONFLICT (id) DO UPDATE` or update the existing singleton row directly.
+- The importer must not truncate `profile` unless it also recreates the singleton invariant inside the same import transaction.
+- After importing explicit IDs into identity columns, reset every affected identity sequence with `setval` based on the imported max ID.
+
 Rollback plan:
 
 - Keep the SQLite backup and upload snapshot.
@@ -606,18 +683,25 @@ Required test coverage:
 
 - PostgreSQL migrations create all tables, constraints, and indexes.
 - Migration locking prevents concurrent double-apply.
+- Migration runner acquires the advisory lock before creating `schema_migrations`.
+- Migration runner executes multi-statement files statement-by-statement or rejects multi-statement files when no safe splitter is available.
 - Profile singleton constraint rejects `id != 1`.
+- SQLite-to-PostgreSQL import updates the existing `profile id = 1` singleton without primary-key conflict.
+- Concurrent profile saves with the same ETag allow only one write and return conflict for the other.
+- Concurrent project, writing, or talk creation with the same title resolves slug collisions deterministically or returns a controlled conflict after bounded retries.
 - Foreign keys enforce media delete restrictions.
 - `RETURNING id` paths work for admins, sessions, media, projects, writings, talks, and experiences.
 - `ON CONFLICT` term upsert works for tags and techs.
 - Status checks reject invalid values.
 - Boolean fields scan as Go booleans.
 - `TIMESTAMPTZ` fields scan as `time.Time` and serialize as RFC 3339.
+- Timestamp writes truncate to microsecond precision and profile ETags remain stable after round trips.
 - `media_assets.variants` round-trips as JSONB.
 - Public content queries exclude drafts, archived rows, and future published rows.
 - Batch hydration returns project techs and writing tags in the expected order.
 - Media list returns `referenced` state without per-row reference queries.
 - Media list search remains case-insensitive after moving from SQLite `LIKE` to PostgreSQL.
+- Profile and content saves rebuild `media_references` for avatar, cover, OG image, and Markdown media references in the same transaction as the content write.
 - Backup command produces a PostgreSQL dump and upload copy.
 
 Frontend tests do not need storage-specific changes unless API response shapes change. This design keeps response shapes stable.
@@ -631,14 +715,16 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 5. Keep PostgreSQL as the only database implementation behind those interfaces.
 6. Rewrite repository SQL placeholders and insert-ID paths.
 7. Replace SQLite-specific upserts with PostgreSQL `ON CONFLICT`.
-8. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`.
-9. Convert boolean storage from integers to PostgreSQL booleans.
-10. Rename `media_assets.variants_json` to `variants` and store JSONB.
-11. Optimize media, project, and writing list queries to avoid N+1 reads.
-12. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate or documented maintenance-mode requirement.
-13. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
-14. Update README deployment and development instructions.
-15. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
+8. Make profile `If-Match` saves and routable slug creation safe under concurrent PostgreSQL writes.
+9. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`, with UTC microsecond normalization.
+10. Convert boolean storage from integers to PostgreSQL booleans.
+11. Rename `media_assets.variants_json` to `variants` and store JSONB.
+12. Wire profile and content saves to rebuild `media_references` in the same write transaction.
+13. Optimize media, project, and writing list queries to avoid N+1 reads.
+14. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate or documented maintenance-mode requirement.
+15. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
+16. Update README deployment and development instructions.
+17. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
 
 Independent media storage delivery point:
 
