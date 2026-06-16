@@ -218,7 +218,7 @@ schema_migrations
 `profile` remains a singleton:
 
 ```sql
-id SMALLINT PRIMARY KEY CHECK (id = 1)
+id BIGINT PRIMARY KEY CHECK (id = 1)
 ```
 
 The initial migration inserts the singleton row with `id = 1`.
@@ -463,7 +463,9 @@ Reference rebuilding should de-duplicate repeated Markdown references to the sam
 Markdown parsing:
 
 - Only the internal syntax `media://asset/{id}/{variant}` creates Markdown media references.
-- Raw `/uploads/*`, remote URLs, `data:`, and SVG image references do not create references and should fail validation according to the Markdown safety rules.
+- Raw `/uploads/*`, remote URLs, `data:`, and SVG image references are rejected by new backend validation on content save. The API returns `validation_error` with a field-level error for `content_md`.
+- Missing media IDs, unknown variants, and malformed `media://` image URLs are also backend validation errors.
+- The frontend Markdown renderer may still render unsupported images as empty output defensively, but backend save validation is the authoritative gate for persisted content.
 - Store asset-level references only; variants remain in Markdown and in `media_assets.variants`.
 
 Media deletion must continue checking `media_references` so referenced assets cannot be deleted.
@@ -495,6 +497,8 @@ LocalBlobStore
 - Serve public derivatives under `/uploads/*`.
 - Store raw temporary uploads under `PRIVATE_UPLOADS_DIR`.
 - Exclude private temporary uploads from backup.
+- In the PostgreSQL migration stage, deleting a media asset deletes metadata only and leaves existing derivative files in place, matching current behavior.
+- Physical blob cleanup is a separate future task that should scan unreferenced blob keys and delete them in a controlled cleanup job, not inline during metadata delete.
 
 Future implementation:
 
@@ -505,6 +509,23 @@ MinIOBlobStore
 The PostgreSQL redesign should not require MinIO, but it should avoid baking filesystem assumptions into the media metadata schema. Database rows should store stable blob keys and variant metadata, while the active `BlobStore` decides how a blob key becomes a public URL.
 
 In this stage, existing variant paths can remain same-origin `/uploads/...` URLs for compatibility. A later MinIO migration can evolve variant metadata from path-oriented fields to key-oriented fields if needed.
+
+## Media Upload Consistency
+
+Media upload spans filesystem writes and a database insert, so the PostgreSQL redesign must define failure cleanup explicitly.
+
+First-stage local filesystem behavior:
+
+- Generate derivatives into a staging directory under `PRIVATE_UPLOADS_DIR` or a non-public staging area.
+- Insert the `media_assets` row only after derivative generation succeeds.
+- After the database insert commits, atomically move the staged derivative directory into its final public `UPLOADS_DIR` location where the filesystem supports rename.
+- If the database insert fails, delete the staged derivative directory before returning the error.
+- If the final move fails after the database insert, delete the `media_assets` row in a compensating cleanup path or mark the asset unavailable and return an upload error.
+- Log cleanup failures with the storage key so an orphan cleanup command can report them later.
+
+If implementation keeps the current direct-to-public derivative generation during the first cut, it must at minimum delete the generated derivative directory whenever the PostgreSQL insert fails. The staging approach is preferred because it avoids exposing files before metadata commit.
+
+Backups should only include activated public derivatives, not staging directories.
 
 ## Query Optimization
 
@@ -566,6 +587,8 @@ PostgreSQL constraint errors should be mapped to existing domain errors where pr
 Useful PostgreSQL SQLSTATE codes:
 
 ```text
+40001 serialization_failure
+40P01 deadlock_detected
 23505 unique_violation
 23503 foreign_key_violation
 23514 check_violation
@@ -576,6 +599,10 @@ Examples:
 - Duplicate slug maps to conflict behavior.
 - Invalid status maps to validation behavior.
 - Missing referenced media maps to validation or conflict behavior depending on the route.
+- Sort order operations that use `SERIALIZABLE` must retry boundedly on `40001 serialization_failure`.
+- Operations that take advisory locks or update multiple rows should retry boundedly on `40P01 deadlock_detected` when the operation is known to be idempotent.
+- Media delete must map `23503 foreign_key_violation` from `DELETE FROM media_assets` to `ErrReferenced` and return the existing `409 conflict` response. This handles the race where another transaction inserts a media reference after the pre-delete reference check.
+- Non-idempotent operations must not be retried unless they are wrapped so the full attempt can be safely replayed.
 
 The public API error shape does not change.
 
@@ -746,6 +773,10 @@ Required test coverage:
 - Media list returns `referenced` state without per-row reference queries.
 - Media list search remains case-insensitive after moving from SQLite `LIKE` to PostgreSQL.
 - Profile and content saves rebuild `media_references` for avatar, cover, OG image, and Markdown media references in the same transaction as the content write.
+- Backend content save validation rejects raw `/uploads/*`, remote, `data:`, SVG, malformed `media://`, missing media ID, and unknown variant Markdown image references with `validation_error`.
+- Media upload cleans up generated derivative files or staging directories when the PostgreSQL metadata insert fails.
+- Media delete maps a concurrent `23503 foreign_key_violation` to `ErrReferenced` and HTTP `409 conflict`.
+- Sort order operations using `SERIALIZABLE` retry boundedly on `40001`, and advisory-lock operations retry boundedly on `40P01` where the full attempt is safe to replay.
 - Backup command produces a PostgreSQL dump and upload copy.
 - Backup gate blocks content writes and media uploads while backup holds the gate.
 - Restore documentation or restore command enforces maintenance mode and avoids half-restored database/uploads states.
@@ -766,11 +797,14 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 10. Convert boolean storage from integers to PostgreSQL booleans.
 11. Rename `media_assets.variants_json` to `variants` and store JSONB.
 12. Wire profile and content saves to rebuild `media_references` in the same write transaction.
-13. Optimize media, project, and writing list queries to avoid N+1 reads.
-14. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate, restore maintenance-mode rules, and half-restore rollback behavior.
-15. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
-16. Update README deployment and development instructions.
-17. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
+13. Add backend Markdown media validation and preserve the existing public API error shape.
+14. Define media upload staging or cleanup behavior so filesystem derivatives and PostgreSQL metadata do not drift on failed writes.
+15. Map PostgreSQL FK and transient concurrency errors to domain errors or bounded retry paths.
+16. Optimize media, project, and writing list queries to avoid N+1 reads.
+17. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate, restore maintenance-mode rules, and half-restore rollback behavior.
+18. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
+19. Update README deployment and development instructions.
+20. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
 
 Independent media storage delivery point:
 
