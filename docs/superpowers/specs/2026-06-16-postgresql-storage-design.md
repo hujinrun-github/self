@@ -165,16 +165,15 @@ Migration rules:
 
 - Run migrations at startup before serving HTTP traffic.
 - Apply migration files in lexical order.
-- Wrap each migration file in a transaction.
-- Use a PostgreSQL session-level advisory lock around the full migration run so concurrent app startups cannot apply the same migration twice.
+- Wrap the full pending migration run in one transaction.
 - Pin migrations to one physical connection with `db.Conn(ctx)`.
-- Acquire the advisory lock on that pinned connection before creating or reading `schema_migrations`.
-- Create `schema_migrations` after the advisory lock has been acquired.
-- Start each migration transaction with `conn.BeginTx(ctx, nil)` so the lock and all migration transactions stay on the same PostgreSQL connection.
-- Execute migration SQL statement-by-statement inside each migration transaction. Do not rely on whole-file `Exec` for multi-statement migration files.
+- Start the migration transaction with `conn.BeginTx(ctx, nil)`.
+- Acquire a transaction-level advisory lock with `pg_advisory_xact_lock` before creating or reading `schema_migrations`.
+- Create `schema_migrations` after the transaction-level advisory lock has been acquired.
+- Execute pending migration SQL statement-by-statement inside the same migration transaction. Do not rely on whole-file `Exec` for multi-statement migration files.
 - Use a parser or splitter that understands PostgreSQL comments, quoted strings, and dollar-quoted function bodies. If that is not implemented, require each migration file to contain exactly one SQL statement.
 - Do not switch migrations to `QueryExecModeSimpleProtocol` just to support multi-statement strings; keep normal query execution and make statement boundaries explicit.
-- Release the lock with `pg_advisory_unlock` in a `defer`; closing the pinned connection is the final fallback if unlock fails.
+- The transaction-level advisory lock is released automatically on commit or rollback, avoiding pooled-session lock leaks.
 - Record the migration version after the SQL file succeeds.
 - Fail startup if any migration fails.
 
@@ -297,6 +296,7 @@ Keep the current foreign-key behavior:
 Use PostgreSQL `CHECK` constraints for:
 
 - Valid status values.
+- Published content invariant on `experiences`, `talks`, `writings`, and `projects`: `CHECK (status <> 'published' OR published_at IS NOT NULL)`.
 - Positive media dimensions.
 - Non-negative media size.
 - Valid media reference resource types.
@@ -470,6 +470,13 @@ Markdown parsing:
 
 Media deletion must continue checking `media_references` so referenced assets cannot be deleted.
 
+Hard delete flow:
+
+- Any hard delete for a resource that can own media references must delete that resource's `media_references` in the same transaction as the content row delete.
+- For projects, writings, and talks, delete `media_references WHERE resource_type = $type AND resource_id = $id` before or after deleting the content row, but before committing.
+- This is required because `media_references.resource_id` is polymorphic and has no foreign key to the resource tables.
+- Deleting a never-published draft must not leave orphan `media_references` rows that permanently block media deletion.
+
 ## Media Blob Storage Abstraction
 
 File storage is the part of this system that should be designed as pluggable now, because local disk and MinIO have a natural interface boundary.
@@ -517,13 +524,16 @@ Media upload spans filesystem writes and a database insert, so the PostgreSQL re
 First-stage local filesystem behavior:
 
 - Generate derivatives into a staging directory under `PRIVATE_UPLOADS_DIR` or a non-public staging area.
-- Insert the `media_assets` row only after derivative generation succeeds.
-- After the database insert commits, atomically move the staged derivative directory into its final public `UPLOADS_DIR` location where the filesystem supports rename.
-- If the database insert fails, delete the staged derivative directory before returning the error.
-- If the final move fails after the database insert, delete the `media_assets` row in a compensating cleanup path or mark the asset unavailable and return an upload error.
+- Begin a database transaction after derivative generation succeeds.
+- Insert the `media_assets` row inside the uncommitted transaction.
+- Move the staged derivative directory into its final public `UPLOADS_DIR` location before committing the transaction.
+- If the final move fails, roll back the database transaction and delete the staging directory.
+- If the commit fails after the final move succeeds, delete the final derivative directory before returning the error.
 - Log cleanup failures with the storage key so an orphan cleanup command can report them later.
 
-If implementation keeps the current direct-to-public derivative generation during the first cut, it must at minimum delete the generated derivative directory whenever the PostgreSQL insert fails. The staging approach is preferred because it avoids exposing files before metadata commit.
+The media asset must not become visible through list/detail APIs until both the database row and final derivative files exist. The staging-plus-uncommitted-transaction approach is preferred because metadata is not committed until the final files are in place.
+
+If implementation keeps the current direct-to-public derivative generation during the first cut, it must at minimum delete the generated derivative directory whenever the PostgreSQL insert fails or commit fails.
 
 Backups should only include activated public derivatives, not staging directories.
 
@@ -764,6 +774,7 @@ Required test coverage:
 - `RETURNING id` paths work for admins, sessions, media, projects, writings, talks, and experiences.
 - `ON CONFLICT` term upsert works for tags and techs.
 - Status checks reject invalid values.
+- Database checks reject `status = 'published'` with `published_at IS NULL` for publishable content tables.
 - Boolean fields scan as Go booleans.
 - `TIMESTAMPTZ` fields scan as `time.Time` and serialize as RFC 3339.
 - Timestamp writes truncate to microsecond precision and profile ETags remain stable after round trips.
@@ -773,8 +784,10 @@ Required test coverage:
 - Media list returns `referenced` state without per-row reference queries.
 - Media list search remains case-insensitive after moving from SQLite `LIKE` to PostgreSQL.
 - Profile and content saves rebuild `media_references` for avatar, cover, OG image, and Markdown media references in the same transaction as the content write.
+- Hard-deleting a draft project, writing entry, or talk deletes that resource's `media_references` in the same transaction.
 - Backend content save validation rejects raw `/uploads/*`, remote, `data:`, SVG, malformed `media://`, missing media ID, and unknown variant Markdown image references with `validation_error`.
 - Media upload cleans up generated derivative files or staging directories when the PostgreSQL metadata insert fails.
+- Media upload final move failure leaves no visible `media_assets` row, and commit failure after final move cleans up the final derivative directory or reports it to orphan cleanup.
 - Media delete maps a concurrent `23503 foreign_key_violation` to `ErrReferenced` and HTTP `409 conflict`.
 - Sort order operations using `SERIALIZABLE` retry boundedly on `40001`, and advisory-lock operations retry boundedly on `40P01` where the full attempt is safe to replay.
 - Backup command produces a PostgreSQL dump and upload copy.
@@ -785,8 +798,8 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 
 ## Delivery Sequence
 
-1. Add PostgreSQL dependency and redesign `internal/db` configuration, connection, ping, pinned-connection migration locking, and statement-by-statement migration execution.
-2. Replace the initial migration with PostgreSQL schema SQL.
+1. Add PostgreSQL dependency and redesign `internal/db` configuration, connection, ping, pinned-connection migration execution, transaction-level migration locking, and statement-by-statement migration execution.
+2. Replace the initial migration with PostgreSQL schema SQL, including published-content invariants.
 3. Update config loading and documentation from `DATABASE_PATH` to `DATABASE_URL`.
 4. Introduce business-facing store interfaces where handlers currently depend directly on concrete repositories.
 5. Keep PostgreSQL as the only database implementation behind those interfaces.
@@ -796,9 +809,9 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 9. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`, with UTC microsecond normalization.
 10. Convert boolean storage from integers to PostgreSQL booleans.
 11. Rename `media_assets.variants_json` to `variants` and store JSONB.
-12. Wire profile and content saves to rebuild `media_references` in the same write transaction.
+12. Wire profile and content saves/deletes to rebuild or clear `media_references` in the same write transaction.
 13. Add backend Markdown media validation and preserve the existing public API error shape.
-14. Define media upload staging or cleanup behavior so filesystem derivatives and PostgreSQL metadata do not drift on failed writes.
+14. Define media upload staging and transaction ordering so media metadata is visible only after final derivative files exist.
 15. Map PostgreSQL FK and transient concurrency errors to domain errors or bounded retry paths.
 16. Optimize media, project, and writing list queries to avoid N+1 reads.
 17. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate, restore maintenance-mode rules, and half-restore rollback behavior.
