@@ -12,7 +12,7 @@ func (s *Service) issueCSRF(ctx context.Context, sessionID int64) (string, error
 	if err != nil {
 		return "", err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE sessions SET csrf_token_hash = ? WHERE id = ?`, hashToken(token), sessionID)
+	_, err = s.db.ExecContext(ctx, `UPDATE sessions SET csrf_token_hash = $1 WHERE id = $2`, hashToken(token), sessionID)
 	return token, err
 }
 
@@ -21,7 +21,7 @@ func (s *Service) validCSRF(ctx context.Context, sessionID int64, rawToken strin
 		return false
 	}
 	var storedHash string
-	if err := s.db.QueryRowContext(ctx, `SELECT csrf_token_hash FROM sessions WHERE id = ? AND revoked_at IS NULL`, sessionID).Scan(&storedHash); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT csrf_token_hash FROM sessions WHERE id = $1 AND revoked_at IS NULL`, sessionID).Scan(&storedHash); err != nil {
 		return false
 	}
 	return storedHash == hashToken(rawToken)
