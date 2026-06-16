@@ -48,6 +48,42 @@ github.com/jackc/pgx/v5/stdlib
 
 Connection ownership remains in `internal/db`. Application packages receive a ready `*sql.DB`; they do not parse environment variables or manage connection pools themselves.
 
+## Storage Abstraction Boundary
+
+This redesign uses a light storage abstraction, not a fully pluggable SQL dialect system.
+
+HTTP handlers and services should depend on business-facing interfaces where the boundary is useful, such as:
+
+```go
+type ProjectStore interface {
+	CreateProject(ctx context.Context, input ProjectInput) (Project, error)
+	UpdateProject(ctx context.Context, id int64, input ProjectInput) (Project, error)
+	GetProject(ctx context.Context, id int64) (Project, error)
+	ListProjects(ctx context.Context, limit int) ([]Project, error)
+	PublicProjects(ctx context.Context, limit int) ([]Project, error)
+	PublicProjectBySlug(ctx context.Context, slug string) (Project, error)
+	SetProjectStatus(ctx context.Context, id int64, status Status, publishedAt *time.Time) error
+	DeleteProject(ctx context.Context, id int64) error
+	ReorderProjects(ctx context.Context, orderedIDs []int64) error
+}
+```
+
+The first implementation is PostgreSQL-backed. The design intentionally does not add SQLite, MySQL, or generic SQL dialect plugins because PostgreSQL-specific behavior is part of the target design: `RETURNING`, `JSONB`, `TIMESTAMPTZ`, `ON CONFLICT`, `ANY($1)`, advisory migration locks, and PostgreSQL SQLSTATE error mapping.
+
+The abstraction goal is to keep HTTP and application workflows independent from repository implementation details, not to make every relational database interchangeable.
+
+Recommended interface boundaries:
+
+- `auth.AdminStore` for admin lookup, bootstrap, sessions, and CSRF token persistence.
+- `profile.Store` for profile and social links.
+- `content.Store` or resource-specific interfaces for projects, writing, talks, and experience.
+- `media.AssetStore` for media metadata and references.
+- `site.HomeStore` for homepage and sitemap reads.
+
+Repository implementations should live beside their domain packages or in clearly named PostgreSQL files, such as `postgres_repository.go`, when the split improves clarity. Keep constructors explicit, for example `content.NewPostgresRepository(database)`.
+
+Avoid generic CRUD interfaces. Each interface should express the operations the application actually needs.
+
 ## Runtime Configuration
 
 Required storage configuration:
@@ -310,6 +346,44 @@ Database writes pass `[]byte` or `string` JSON to PostgreSQL. Database reads sca
 
 No JSONB GIN index is needed in the first PostgreSQL version because the app does not query inside variant JSON.
 
+## Media Blob Storage Abstraction
+
+File storage is the part of this system that should be designed as pluggable now, because local disk and MinIO have a natural interface boundary.
+
+Introduce a blob storage interface for generated media derivatives and temporary raw upload handling:
+
+```go
+type BlobStore interface {
+	Put(ctx context.Context, key string, reader io.Reader, contentType string) error
+	Open(ctx context.Context, key string) (io.ReadCloser, error)
+	Delete(ctx context.Context, key string) error
+	PublicURL(ctx context.Context, key string) string
+}
+```
+
+First implementation:
+
+```text
+LocalBlobStore
+```
+
+`LocalBlobStore` keeps the current behavior:
+
+- Store public derivatives under `UPLOADS_DIR`.
+- Serve public derivatives under `/uploads/*`.
+- Store raw temporary uploads under `PRIVATE_UPLOADS_DIR`.
+- Exclude private temporary uploads from backup.
+
+Future implementation:
+
+```text
+MinIOBlobStore
+```
+
+The PostgreSQL redesign should not require MinIO, but it should avoid baking filesystem assumptions into the media metadata schema. Database rows should store stable blob keys and variant metadata, while the active `BlobStore` decides how a blob key becomes a public URL.
+
+In this stage, existing variant paths can remain same-origin `/uploads/...` URLs for compatibility. A later MinIO migration can evolve variant metadata from path-oriented fields to key-oriented fields if needed.
+
 ## Query Optimization
 
 The PostgreSQL redesign should also remove the highest-impact N+1 storage patterns.
@@ -501,16 +575,19 @@ Frontend tests do not need storage-specific changes unless API response shapes c
 1. Add PostgreSQL dependency and redesign `internal/db` configuration, connection, ping, and migration locking.
 2. Replace the initial migration with PostgreSQL schema SQL.
 3. Update config loading and documentation from `DATABASE_PATH` to `DATABASE_URL`.
-4. Rewrite repository SQL placeholders and insert-ID paths.
-5. Replace SQLite-specific upserts with PostgreSQL `ON CONFLICT`.
-6. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`.
-7. Convert boolean storage from integers to PostgreSQL booleans.
-8. Rename `media_assets.variants_json` to `variants` and store JSONB.
-9. Optimize media, project, and writing list queries to avoid N+1 reads.
-10. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy.
-11. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
-12. Update README deployment and development instructions.
-13. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
+4. Introduce business-facing store interfaces where handlers currently depend directly on concrete repositories.
+5. Keep PostgreSQL as the only database implementation behind those interfaces.
+6. Rewrite repository SQL placeholders and insert-ID paths.
+7. Replace SQLite-specific upserts with PostgreSQL `ON CONFLICT`.
+8. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`.
+9. Convert boolean storage from integers to PostgreSQL booleans.
+10. Rename `media_assets.variants_json` to `variants` and store JSONB.
+11. Introduce `LocalBlobStore` behind a `BlobStore` interface while preserving current local upload behavior.
+12. Optimize media, project, and writing list queries to avoid N+1 reads.
+13. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy.
+14. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
+15. Update README deployment and development instructions.
+16. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
 
 ## Open Review Points
 
