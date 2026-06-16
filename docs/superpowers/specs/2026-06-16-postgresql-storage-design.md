@@ -369,6 +369,22 @@ Slug generation:
 - Limit slug retry attempts, for example 10 attempts, and return a conflict or validation error if no available slug is found.
 - Slug updates for drafts need the same collision handling. Published and archived slug immutability rules stay unchanged.
 
+Sort order writes:
+
+- `nextSortOrder`, reorder endpoints, and any operation that reads current order then writes new `sort_order` values must be serialized per resource table.
+- Preferred implementation: take a transaction-level PostgreSQL advisory lock keyed by resource type before `SELECT MAX(sort_order)`, bulk reorder validation, and reorder updates.
+- Example lock keys can be derived from stable names such as `portfolio.sort.projects`, `portfolio.sort.writings`, `portfolio.sort.talks`, and `portfolio.sort.experiences`.
+- Alternative implementation: run the operation at `SERIALIZABLE` isolation and retry serialization failures.
+- This lock is separate from migration locks and backup write gates. It protects ordering invariants during normal concurrent admin writes.
+
+Admin bootstrap:
+
+- Admin bootstrap must be idempotent under concurrent app startup.
+- Do not implement bootstrap as `SELECT COUNT(*)` followed by unconditional `INSERT`.
+- Preferred implementation: take a bootstrap advisory lock, check for existing admins, then insert the initial admin inside the same transaction.
+- The insert should still use `INSERT ... ON CONFLICT (email) DO NOTHING` as a final guard.
+- If another instance creates the admin first, bootstrap should re-check that at least one admin exists and continue startup instead of failing on a unique constraint.
+
 ## Time Handling
 
 Go code should scan nullable timestamps with `sql.NullTime` instead of `sql.NullString`.
@@ -417,6 +433,13 @@ No JSONB GIN index is needed in the first PostgreSQL version because the app doe
 
 Every profile or content write that can change media usage must rebuild references inside the same database transaction as the owning row update.
 
+Repository ownership:
+
+- `profile.Repository` must rebuild profile media references during `SaveAdmin`.
+- `content.Repository` must rebuild project, writing, and talk references during create/update operations.
+- The rebuild API must accept the caller's `*sql.Tx`; it must not open its own transaction or use the base `*sql.DB`.
+- If the media service remains a separate package, expose a small reference-maintenance interface that repositories can call inside their existing write transactions.
+
 Reference sources:
 
 - Profile avatar: `resource_type = 'profile'`, `resource_id = 1`, `source = 'avatar'`.
@@ -436,6 +459,12 @@ Write flow:
 7. Commit the transaction.
 
 Reference rebuilding should de-duplicate repeated Markdown references to the same asset/source pair before insert. The unique constraint remains the final guard.
+
+Markdown parsing:
+
+- Only the internal syntax `media://asset/{id}/{variant}` creates Markdown media references.
+- Raw `/uploads/*`, remote URLs, `data:`, and SVG image references do not create references and should fail validation according to the Markdown safety rules.
+- Store asset-level references only; variants remain in Markdown and in `media_assets.variants`.
 
 Media deletion must continue checking `media_references` so referenced assets cannot be deleted.
 
@@ -495,9 +524,11 @@ Recommended batch pattern:
 SELECT project_id, techs.name, techs.slug, project_tech.sort_order
 FROM project_tech
 JOIN techs ON techs.id = project_tech.tech_id
-WHERE project_id = ANY($1)
+WHERE project_id = ANY($1::bigint[])
 ORDER BY project_id, project_tech.sort_order;
 ```
+
+When the ID slice is empty, repository helpers must return an empty result without querying PostgreSQL. This avoids empty-array type inference issues and unnecessary round trips. Non-empty ID slices should be bound as PostgreSQL `bigint[]` values compatible with `database/sql` plus the pgx driver.
 
 This keeps Repository APIs stable while reducing per-request query counts.
 
@@ -590,6 +621,16 @@ pg_restore --clean --if-exists --no-owner --host <host> --port <port> --username
 ```
 
 Uploads are restored by copying the backed-up `uploads/` tree back to `UPLOADS_DIR`.
+
+Restore rules:
+
+- Restore requires the app to be stopped or placed in maintenance mode before touching PostgreSQL or `UPLOADS_DIR`.
+- Restore database first into a known target database while the app is not serving writes.
+- Restore uploads into a temporary directory, verify the copy, then atomically rename it into place where the filesystem supports it.
+- Keep the previous uploads directory until database restore and upload restore have both succeeded.
+- If database restore succeeds but upload restore fails, keep the app in maintenance mode and either retry upload restore or restore the previous database dump before serving traffic.
+- If upload restore succeeds but database restore fails, keep the old active uploads directory and do not switch the restored upload tree into place.
+- Log restore start, database restore completion, upload restore completion, and final activation.
 
 ## SQLite To PostgreSQL Data Migration
 
@@ -687,8 +728,11 @@ Required test coverage:
 - Migration runner executes multi-statement files statement-by-statement or rejects multi-statement files when no safe splitter is available.
 - Profile singleton constraint rejects `id != 1`.
 - SQLite-to-PostgreSQL import updates the existing `profile id = 1` singleton without primary-key conflict.
+- Concurrent admin bootstrap across two app instances results in one admin row and both instances continue startup.
 - Concurrent profile saves with the same ETag allow only one write and return conflict for the other.
 - Concurrent project, writing, or talk creation with the same title resolves slug collisions deterministically or returns a controlled conflict after bounded retries.
+- Concurrent project, writing, talk, or experience creation does not assign duplicate `sort_order` values.
+- Concurrent reorder and create operations for the same resource table preserve a valid ordering or retry cleanly.
 - Foreign keys enforce media delete restrictions.
 - `RETURNING id` paths work for admins, sessions, media, projects, writings, talks, and experiences.
 - `ON CONFLICT` term upsert works for tags and techs.
@@ -703,25 +747,27 @@ Required test coverage:
 - Media list search remains case-insensitive after moving from SQLite `LIKE` to PostgreSQL.
 - Profile and content saves rebuild `media_references` for avatar, cover, OG image, and Markdown media references in the same transaction as the content write.
 - Backup command produces a PostgreSQL dump and upload copy.
+- Backup gate blocks content writes and media uploads while backup holds the gate.
+- Restore documentation or restore command enforces maintenance mode and avoids half-restored database/uploads states.
 
 Frontend tests do not need storage-specific changes unless API response shapes change. This design keeps response shapes stable.
 
 ## Delivery Sequence
 
-1. Add PostgreSQL dependency and redesign `internal/db` configuration, connection, ping, and migration locking.
+1. Add PostgreSQL dependency and redesign `internal/db` configuration, connection, ping, pinned-connection migration locking, and statement-by-statement migration execution.
 2. Replace the initial migration with PostgreSQL schema SQL.
 3. Update config loading and documentation from `DATABASE_PATH` to `DATABASE_URL`.
 4. Introduce business-facing store interfaces where handlers currently depend directly on concrete repositories.
 5. Keep PostgreSQL as the only database implementation behind those interfaces.
 6. Rewrite repository SQL placeholders and insert-ID paths.
 7. Replace SQLite-specific upserts with PostgreSQL `ON CONFLICT`.
-8. Make profile `If-Match` saves and routable slug creation safe under concurrent PostgreSQL writes.
+8. Make admin bootstrap, profile `If-Match` saves, sort-order writes, reorder operations, and routable slug creation safe under concurrent PostgreSQL writes.
 9. Convert timestamp scans from strings to `sql.NullTime` or `time.Time`, with UTC microsecond normalization.
 10. Convert boolean storage from integers to PostgreSQL booleans.
 11. Rename `media_assets.variants_json` to `variants` and store JSONB.
 12. Wire profile and content saves to rebuild `media_references` in the same write transaction.
 13. Optimize media, project, and writing list queries to avoid N+1 reads.
-14. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate or documented maintenance-mode requirement.
+14. Replace SQLite backup behavior with `pg_dump` plus upload-directory copy, including the application write gate, restore maintenance-mode rules, and half-restore rollback behavior.
 15. Add PostgreSQL test helpers using `TEST_DATABASE_URL`.
 16. Update README deployment and development instructions.
 17. Add the optional one-time SQLite-to-PostgreSQL migration command if existing data must be carried forward.
