@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -15,7 +16,7 @@ type Config struct {
 	AdminEmail         string
 	AdminPassword      string
 	SessionSecret      string
-	DatabasePath       string
+	DatabaseURL        string
 	UploadsDir         string
 	PrivateUploadsDir  string
 	SessionTTL         time.Duration
@@ -30,7 +31,7 @@ func Load() (Config, error) {
 		AdminEmail:         os.Getenv("ADMIN_EMAIL"),
 		AdminPassword:      os.Getenv("ADMIN_PASSWORD"),
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
-		DatabasePath:       os.Getenv("DATABASE_PATH"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		UploadsDir:         os.Getenv("UPLOADS_DIR"),
 		PrivateUploadsDir:  os.Getenv("PRIVATE_UPLOADS_DIR"),
 		SessionTTL:         durationFromHours("SESSION_TTL_HOURS", 12),
@@ -38,7 +39,7 @@ func Load() (Config, error) {
 	}
 	if cfg.AppOrigin == "" || cfg.PublicBaseURL == "" || cfg.SiteName == "" ||
 		cfg.AdminEmail == "" || cfg.AdminPassword == "" || cfg.SessionSecret == "" ||
-		cfg.DatabasePath == "" || cfg.UploadsDir == "" || cfg.PrivateUploadsDir == "" {
+		cfg.DatabaseURL == "" || cfg.UploadsDir == "" || cfg.PrivateUploadsDir == "" {
 		return Config{}, errors.New("missing required runtime configuration")
 	}
 	if len(cfg.AdminPassword) < 16 {
@@ -75,5 +76,19 @@ func durationFromMinutes(name string, fallback int) time.Duration {
 }
 
 func (c Config) String() string {
-	return fmt.Sprintf("site=%s db=%s", c.SiteName, c.DatabasePath)
+	return fmt.Sprintf("site=%s db=%s", c.SiteName, redactDatabaseURL(c.DatabaseURL))
+}
+
+func redactDatabaseURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "invalid"
+	}
+	if parsed.User != nil {
+		username := parsed.User.Username()
+		parsed.User = url.User(username)
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
