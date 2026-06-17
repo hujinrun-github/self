@@ -115,11 +115,15 @@ func (r *Repository) SaveAdmin(ctx context.Context, input ProfileInput, ifMatch 
 	if err := tx.QueryRowContext(ctx, `SELECT updated_at FROM profile WHERE id = $1 FOR UPDATE`, 1).Scan(&updatedAt); err != nil {
 		return err
 	}
-	if etagForTime(updatedAt) != ifMatch {
+	current := storage.NormalizeTime(updatedAt)
+	if etagForTime(current) != ifMatch {
 		return ErrConflict
 	}
 
 	now := storage.NormalizeTime(r.clock())
+	if !now.After(current) {
+		now = current.Add(time.Microsecond)
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE profile SET name = $1, headline = $2, summary = $3, bio = $4, avatar_media_id = $5, email = $6, seo_title = $7, seo_description = $8, og_image_media_id = $9, updated_at = $10 WHERE id = $11`,
 		input.Name,
 		input.Headline,

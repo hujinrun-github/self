@@ -151,43 +151,76 @@ func TestSaveAdminConcurrentWithSameETagAllowsOneWrite(t *testing.T) {
 	}
 }
 
+func TestSaveAdminRejectsStaleETagWhenClockDoesNotAdvance(t *testing.T) {
+	repo, _ := newProfileTestServer(t)
+	admin, etag, err := repo.GetAdmin(t.Context())
+	if err != nil {
+		t.Fatalf("GetAdmin: %v", err)
+	}
+	current, err := time.Parse(profileTimeFormat, admin.UpdatedAt)
+	if err != nil {
+		t.Fatalf("parse current updated_at: %v", err)
+	}
+
+	repo.clock = func() time.Time { return current }
+	if err := repo.SaveAdmin(t.Context(), ProfileInput{Name: "First"}, etag); err != nil {
+		t.Fatalf("SaveAdmin first: %v", err)
+	}
+	if err := repo.SaveAdmin(t.Context(), ProfileInput{Name: "Second"}, etag); !errors.Is(err, ErrConflict) {
+		t.Fatalf("SaveAdmin stale err = %v, want ErrConflict", err)
+	}
+}
+
 func TestSaveAdminRebuildsProfileMediaReferences(t *testing.T) {
 	repo, _ := newProfileTestServer(t)
-	var mediaID int64
-	err := repo.db.QueryRowContext(t.Context(), `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now()) RETURNING id`,
-		"avatar.png",
-		"profile-avatar",
-		"image/png",
-		10,
-		1,
-		1,
-		`{}`,
-		"sum-profile-avatar",
-	).Scan(&mediaID)
-	if err != nil {
-		t.Fatalf("insert media asset: %v", err)
-	}
+	avatarID := insertProfileMediaAsset(t, repo, "avatar.png", "profile-avatar", "sum-profile-avatar")
+	ogImageID := insertProfileMediaAsset(t, repo, "og.png", "profile-og-image", "sum-profile-og-image")
 
 	_, etag, err := repo.GetAdmin(t.Context())
 	if err != nil {
 		t.Fatalf("GetAdmin: %v", err)
 	}
-	if err := repo.SaveAdmin(t.Context(), ProfileInput{Name: "Ada", AvatarMediaID: &mediaID}, etag); err != nil {
+	if err := repo.SaveAdmin(t.Context(), ProfileInput{Name: "Ada", AvatarMediaID: &avatarID, OGImageMediaID: &ogImageID}, etag); err != nil {
 		t.Fatalf("SaveAdmin: %v", err)
 	}
 
+	assertProfileMediaReference(t, repo, avatarID, "avatar")
+	assertProfileMediaReference(t, repo, ogImageID, "og_image")
+}
+
+func insertProfileMediaAsset(t *testing.T, repo *Repository, fileName string, storageKey string, checksum string) int64 {
+	t.Helper()
+	var mediaID int64
+	err := repo.db.QueryRowContext(t.Context(), `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now()) RETURNING id`,
+		fileName,
+		storageKey,
+		"image/png",
+		10,
+		1,
+		1,
+		`{}`,
+		checksum,
+	).Scan(&mediaID)
+	if err != nil {
+		t.Fatalf("insert media asset: %v", err)
+	}
+	return mediaID
+}
+
+func assertProfileMediaReference(t *testing.T, repo *Repository, mediaID int64, source string) {
+	t.Helper()
 	var count int
-	err = repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2 AND source = $3 AND media_asset_id = $4`,
+	err := repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2 AND source = $3 AND media_asset_id = $4`,
 		"profile",
 		int64(1),
-		"avatar",
+		source,
 		mediaID,
 	).Scan(&count)
 	if err != nil {
 		t.Fatalf("count media references: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("media reference count = %d, want 1", count)
+		t.Fatalf("%s media reference count = %d, want 1", source, count)
 	}
 }
 
