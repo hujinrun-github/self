@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
+	"fmt"
 	"html"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+
+	"portfolio/internal/storage"
 )
 
 type SEOConfig struct {
@@ -104,7 +107,10 @@ func RobotsTxt(publicBaseURL string) string {
 }
 
 func publicSlugs(ctx context.Context, database *sql.DB, table string, now time.Time) ([]string, error) {
-	rows, err := database.QueryContext(ctx, `SELECT slug FROM `+table+` WHERE status = 'published' AND published_at <= ? ORDER BY published_at DESC`, now.UTC().Format(time.RFC3339Nano))
+	if !sitemapTableAllowed(table) {
+		return nil, fmt.Errorf("unknown sitemap table %s", table)
+	}
+	rows, err := database.QueryContext(ctx, `SELECT slug FROM `+table+` WHERE status = 'published' AND published_at <= $1 ORDER BY published_at DESC`, storage.NormalizeTime(now))
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +124,15 @@ func publicSlugs(ctx context.Context, database *sql.DB, table string, now time.T
 		slugs = append(slugs, slug)
 	}
 	return slugs, rows.Err()
+}
+
+func sitemapTableAllowed(table string) bool {
+	switch table {
+	case "talks", "writings", "projects":
+		return true
+	default:
+		return false
+	}
 }
 
 func safeAbsoluteURL(value string) string {

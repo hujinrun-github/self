@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"portfolio/internal/config"
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestLoginRequiresOriginButNotSessionOrCSRF(t *testing.T) {
@@ -120,15 +119,42 @@ func TestSessionStoresOnlyTokenHash(t *testing.T) {
 	}
 }
 
+func TestBootstrapAdminConcurrentIsIdempotent(t *testing.T) {
+	database, _ := dbtest.OpenPostgres(t)
+	cfg := testConfig()
+	service := NewService(database, cfg)
+
+	errs := make(chan error, 2)
+	go func() { errs <- service.BootstrapAdmin(t.Context()) }()
+	go func() { errs <- service.BootstrapAdmin(t.Context()) }()
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("BootstrapAdmin concurrent err = %v", err)
+		}
+	}
+
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM admins`).Scan(&count); err != nil {
+		t.Fatalf("count admins: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("admin count = %d, want 1", count)
+	}
+}
+
 func newTestService(t *testing.T) (*Service, *sql.DB) {
 	t.Helper()
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
+	database, _ := dbtest.OpenPostgres(t)
+	cfg := testConfig()
+	service := NewService(database, cfg)
+	if err := service.BootstrapAdmin(context.Background()); err != nil {
+		t.Fatalf("BootstrapAdmin: %v", err)
 	}
-	t.Cleanup(func() { database.Close() })
+	return service, database
+}
 
-	cfg := config.Config{
+func testConfig() config.Config {
+	return config.Config{
 		AppOrigin:          "http://localhost:8080",
 		AllowedOrigins:     []string{"http://localhost:8080", "https://tylerhu-1.king-shiner.ts.net:10000"},
 		PublicBaseURL:      "http://localhost:8080",
@@ -139,11 +165,6 @@ func newTestService(t *testing.T) (*Service, *sql.DB) {
 		SessionTTL:         12 * time.Hour,
 		SessionIdleTimeout: 2 * time.Hour,
 	}
-	service := NewService(database, cfg)
-	if err := service.BootstrapAdmin(context.Background()); err != nil {
-		t.Fatalf("BootstrapAdmin: %v", err)
-	}
-	return service, database
 }
 
 func adminTestRouter(service *Service) http.Handler {

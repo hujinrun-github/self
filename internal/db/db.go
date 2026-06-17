@@ -1,46 +1,49 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
+	"net/url"
+	"strings"
+	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func Open(path string) (*sql.DB, error) {
-	if path == "" {
-		return nil, fmt.Errorf("database path is required")
+func Open(databaseURL string) (*sql.DB, error) {
+	if strings.TrimSpace(databaseURL) == "" {
+		return nil, fmt.Errorf("database url is required")
 	}
-	if path != ":memory:" {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, fmt.Errorf("create database directory: %w", err)
-		}
+	if !isValidDatabaseURL(databaseURL) {
+		return nil, fmt.Errorf("database url is invalid")
 	}
 
-	database, err := sql.Open("sqlite", path)
+	database, err := sql.Open("pgx", databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return nil, fmt.Errorf("open postgres: invalid database configuration")
 	}
-	database.SetMaxOpenConns(1)
+	database.SetMaxOpenConns(10)
+	database.SetMaxIdleConns(5)
+	database.SetConnMaxLifetime(30 * time.Minute)
 
-	pragmas := []string{
-		`PRAGMA journal_mode = WAL`,
-		`PRAGMA foreign_keys = ON`,
-		`PRAGMA busy_timeout = 5000`,
-		`PRAGMA synchronous = NORMAL`,
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := database.PingContext(ctx); err != nil {
+		database.Close()
+		return nil, fmt.Errorf("ping postgres: connection failed")
 	}
-	for _, pragma := range pragmas {
-		if _, err := database.Exec(pragma); err != nil {
-			database.Close()
-			return nil, fmt.Errorf("apply %s: %w", pragma, err)
-		}
-	}
-
 	if err := Migrate(database); err != nil {
 		database.Close()
 		return nil, err
 	}
 	return database, nil
+}
+
+func isValidDatabaseURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return (parsed.Scheme == "postgres" || parsed.Scheme == "postgresql") && parsed.Host != ""
 }

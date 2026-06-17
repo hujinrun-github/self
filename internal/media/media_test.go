@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -14,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestUploadRejectsInvalidFiles(t *testing.T) {
@@ -62,16 +63,34 @@ func TestUploadGeneratesDerivativesAndDeletesRawTemp(t *testing.T) {
 		t.Fatalf("raw temp files were not deleted: %v", entries)
 	}
 
-	var rawJSON string
-	if err := service.db.QueryRow(`SELECT variants_json FROM media_assets WHERE id = ?`, asset.ID).Scan(&rawJSON); err != nil {
+	var rawJSON []byte
+	if err := service.db.QueryRow(`SELECT variants FROM media_assets WHERE id = $1`, asset.ID).Scan(&rawJSON); err != nil {
 		t.Fatalf("query variants json: %v", err)
 	}
 	var variants map[string]Variant
-	if err := json.Unmarshal([]byte(rawJSON), &variants); err != nil {
+	if err := json.Unmarshal(rawJSON, &variants); err != nil {
 		t.Fatalf("decode variants json: %v", err)
 	}
 	if _, ok := variants["content"]; !ok {
-		t.Fatalf("variants json missing content: %s", rawJSON)
+		t.Fatalf("variants json missing content: %s", string(rawJSON))
+	}
+}
+
+func TestUploadRemovesGeneratedFilesWhenInsertFails(t *testing.T) {
+	service := newMediaService(t)
+	key := "aabbccddeeff00112233445566778899"
+	service.storageKeyFunc = func() (string, error) {
+		return key, nil
+	}
+	insertMediaAsset(t, service.db, key, "existing.png")
+
+	if _, err := service.Upload(context.Background(), "avatar.png", bytes.NewReader(testPNG(t, 640, 360))); err == nil {
+		t.Fatal("expected upload error")
+	}
+
+	finalDir := filepath.Join(service.uploadsDir, key[:2], key[2:4])
+	if _, err := os.Stat(finalDir); !os.IsNotExist(err) {
+		t.Fatalf("final upload directory should be removed, stat err = %v", err)
 	}
 }
 
@@ -117,8 +136,8 @@ func TestReferencesBlockDeleteAndPickerShowsReferenced(t *testing.T) {
 	if !referenced {
 		t.Fatal("expected media to be referenced")
 	}
-	if err := service.Delete(context.Background(), asset.ID); err == nil {
-		t.Fatal("expected delete to be blocked")
+	if err := service.Delete(context.Background(), asset.ID); !errors.Is(err, ErrReferenced) {
+		t.Fatalf("Delete() error = %v, want %v", err, ErrReferenced)
 	}
 	items, err := service.List(context.Background(), 1, 10, "")
 	if err != nil {
@@ -129,17 +148,66 @@ func TestReferencesBlockDeleteAndPickerShowsReferenced(t *testing.T) {
 	}
 }
 
+func TestDeleteMapsForeignKeyViolationToErrReferenced(t *testing.T) {
+	service := newMediaService(t)
+	assetID := insertMediaAsset(t, service.db, "deadbeef00112233445566778899aabb", "cover.png")
+
+	if _, err := service.db.Exec(`
+CREATE OR REPLACE FUNCTION media_delete_add_reference() RETURNS trigger AS $$
+BEGIN
+	INSERT INTO media_references (media_asset_id, resource_type, resource_id, source, created_at)
+	VALUES (OLD.id, 'project', 99, 'cover', now());
+	RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+`); err != nil {
+		t.Fatalf("create trigger function: %v", err)
+	}
+	if _, err := service.db.Exec(`
+CREATE TRIGGER media_assets_delete_add_reference
+BEFORE DELETE ON media_assets
+FOR EACH ROW
+EXECUTE PROCEDURE media_delete_add_reference();
+`); err != nil {
+		t.Fatalf("create trigger: %v", err)
+	}
+
+	err := service.Delete(context.Background(), assetID)
+	if !errors.Is(err, ErrReferenced) {
+		t.Fatalf("Delete() error = %v, want %v", err, ErrReferenced)
+	}
+}
+
 func newMediaService(t *testing.T) *Service {
 	t.Helper()
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database, _ := dbtest.OpenPostgres(t)
 
 	root := t.TempDir()
 	service := NewService(database, filepath.Join(root, "uploads"), filepath.Join(root, "private_uploads"))
 	return service
+}
+
+func insertMediaAsset(t *testing.T, database *sql.DB, storageKey string, fileName string) int64 {
+	t.Helper()
+
+	var id int64
+	err := database.QueryRow(
+		`INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now())
+		 RETURNING id`,
+		fileName,
+		storageKey,
+		"image/png",
+		10,
+		1,
+		1,
+		`{"content":{"path":"/uploads/test/content.jpg","width":1,"height":1,"mime_type":"image/jpeg","size_bytes":10}}`,
+		"checksum-"+storageKey,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert media asset: %v", err)
+	}
+	return id
 }
 
 func testPNG(t *testing.T, width int, height int) []byte {

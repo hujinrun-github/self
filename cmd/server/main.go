@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	database, err := appdb.Open(cfg.DatabasePath)
+	database, err := appdb.Open(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}

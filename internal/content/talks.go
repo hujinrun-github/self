@@ -36,11 +36,27 @@ type Talk struct {
 }
 
 func (r *Repository) CreateTalk(ctx context.Context, input TalkInput) (Talk, error) {
+	for attempt := 0; attempt < 10; attempt++ {
+		talk, err := r.createTalkAttempt(ctx, input)
+		if err == nil {
+			return talk, nil
+		}
+		if !isSlugUniqueViolation(err, "talks") {
+			return Talk{}, err
+		}
+	}
+	return Talk{}, ErrSlugConflict
+}
+
+func (r *Repository) createTalkAttempt(ctx context.Context, input TalkInput) (Talk, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Talk{}, err
 	}
 	defer tx.Rollback()
+	if err := lockContentOrder(ctx, tx, "talks"); err != nil {
+		return Talk{}, err
+	}
 	slug, err := r.uniqueSlug(ctx, tx, "talks", 0, chooseSlugInput(input.Slug, input.Title))
 	if err != nil {
 		return Talk{}, err
@@ -49,13 +65,10 @@ func (r *Repository) CreateTalk(ctx context.Context, input TalkInput) (Talk, err
 	if err != nil {
 		return Talk{}, err
 	}
-	now := formatTime(r.clock())
-	result, err := tx.ExecContext(ctx, `INSERT INTO talks (title, slug, summary, cover_media_id, event_name, video_url, duration_minutes, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		input.Title, slug, input.Summary, input.CoverMediaID, input.EventName, input.VideoURL, input.DurationMinutes, input.SEOTitle, input.SEODescription, input.OGImageMediaID, StatusDraft, boolInt(input.Featured), sortOrder, timePtrString(input.PublishedAt), now, now)
-	if err != nil {
-		return Talk{}, err
-	}
-	id, err := result.LastInsertId()
+	now := normalizeTime(r.clock())
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO talks (title, slug, summary, cover_media_id, event_name, video_url, duration_minutes, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+		input.Title, slug, input.Summary, input.CoverMediaID, input.EventName, input.VideoURL, input.DurationMinutes, input.SEOTitle, input.SEODescription, input.OGImageMediaID, StatusDraft, input.Featured, sortOrder, normalizedTimePtr(input.PublishedAt), now, now).Scan(&id)
 	if err != nil {
 		return Talk{}, err
 	}
@@ -67,23 +80,18 @@ func (r *Repository) CreateTalk(ctx context.Context, input TalkInput) (Talk, err
 
 func (r *Repository) GetTalk(ctx context.Context, id int64) (Talk, error) {
 	var talk Talk
-	var publishedAt sql.NullString
-	var featured int
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, event_name, video_url, status, featured, sort_order, published_at FROM talks WHERE id = ?`, id).
-		Scan(&talk.ID, &talk.Title, &talk.Slug, &talk.Summary, &talk.EventName, &talk.VideoURL, &talk.Status, &featured, &talk.SortOrder, &publishedAt)
+	var publishedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, event_name, video_url, status, featured, sort_order, published_at FROM talks WHERE id = $1`, id).
+		Scan(&talk.ID, &talk.Title, &talk.Slug, &talk.Summary, &talk.EventName, &talk.VideoURL, &talk.Status, &talk.Featured, &talk.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Talk{}, ErrNotFound
 		}
 		return Talk{}, err
 	}
-	talk.Featured = featured == 1
 	if publishedAt.Valid {
-		parsed, err := parseTime(publishedAt.String)
-		if err != nil {
-			return Talk{}, err
-		}
-		talk.PublishedAt = &parsed
+		value := normalizeTime(publishedAt.Time)
+		talk.PublishedAt = &value
 	}
 	return talk, nil
 }

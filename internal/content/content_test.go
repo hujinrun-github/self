@@ -1,9 +1,15 @@
 package content
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func TestProjectCreateDefaultsToDraftAndPublishSetsPublishedAt(t *testing.T) {
@@ -119,4 +125,150 @@ func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
 	if len(project.Techs) != 2 || project.Techs[0].Slug != "go" || project.Techs[1].Slug != "react" {
 		t.Fatalf("project techs = %+v", project.Techs)
 	}
+}
+
+func TestWritingTagsAndProjectTechsDedupeDuplicateInputs(t *testing.T) {
+	repo := newContentRepo(t)
+	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Duplicate Tags", Tags: []string{"Go", "Go", "React"}})
+	if err != nil {
+		t.Fatalf("CreateWriting: %v", err)
+	}
+	if len(writing.Tags) != 2 || writing.Tags[0].Slug != "go" || writing.Tags[0].SortOrder != 10 || writing.Tags[1].Slug != "react" || writing.Tags[1].SortOrder != 20 {
+		t.Fatalf("writing tags = %+v", writing.Tags)
+	}
+
+	project, err := repo.CreateProject(t.Context(), ProjectInput{Title: "Duplicate Techs", Techs: []string{"Go", "Go", "React"}})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if len(project.Techs) != 2 || project.Techs[0].Slug != "go" || project.Techs[0].SortOrder != 10 || project.Techs[1].Slug != "react" || project.Techs[1].SortOrder != 20 {
+		t.Fatalf("project techs = %+v", project.Techs)
+	}
+}
+
+func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
+	repo := newContentRepo(t)
+	const createCount = 12
+	errs := make(chan error, createCount)
+	projects := make(chan Project, createCount)
+	for i := 0; i < createCount; i++ {
+		go func() {
+			project, err := repo.CreateProject(t.Context(), ProjectInput{Title: "Same Title"})
+			if err != nil {
+				errs <- err
+				return
+			}
+			projects <- project
+			errs <- nil
+		}()
+	}
+	for i := 0; i < createCount; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("CreateProject concurrent: %v", err)
+		}
+	}
+	slugs := map[string]bool{}
+	sortOrders := map[int]bool{}
+	for i := 0; i < createCount; i++ {
+		project := <-projects
+		if slugs[project.Slug] {
+			t.Fatalf("duplicate slug %q in project %+v", project.Slug, project)
+		}
+		slugs[project.Slug] = true
+		if sortOrders[project.SortOrder] {
+			t.Fatalf("duplicate sort_order %d in project %+v", project.SortOrder, project)
+		}
+		sortOrders[project.SortOrder] = true
+	}
+}
+
+func TestHardDeleteDraftProjectClearsMediaReferences(t *testing.T) {
+	repo := newContentRepo(t)
+	mediaID := insertContentMediaAsset(t, repo)
+	project, err := repo.CreateProject(t.Context(), ProjectInput{
+		Title:        "Referenced Draft",
+		CoverMediaID: &mediaID,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if _, err := repo.db.ExecContext(t.Context(), `INSERT INTO media_references (media_asset_id, resource_type, resource_id, source, created_at) VALUES ($1, $2, $3, $4, now())`, mediaID, "project", project.ID, "cover"); err != nil {
+		t.Fatalf("insert media reference: %v", err)
+	}
+	if err := repo.DeleteProject(t.Context(), project.ID); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2`, "project", project.ID).Scan(&count); err != nil {
+		t.Fatalf("count media references: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("media reference count = %d, want 0", count)
+	}
+}
+
+func TestWritingRejectsRawUploadsMarkdownReference(t *testing.T) {
+	repo := newContentRepo(t)
+	cases := map[string]string{
+		"inline":      "![x](/uploads/a/b/card.jpg)",
+		"inlineSpace": "![x]( /uploads/a.png)",
+		"htmlDouble":  `<img src="/uploads/a.png">`,
+		"htmlSingle":  `<img alt="x" src='/uploads/a.png'>`,
+		"reference":   "![x][cover]\n\n[cover]: /uploads/a.png",
+	}
+	for name, contentMD := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := repo.CreateWriting(t.Context(), WritingInput{
+				Title:     "Unsafe Markdown " + name,
+				ContentMD: contentMD,
+			})
+			if !errors.Is(err, ErrUnsafeMarkdownMedia) {
+				t.Fatalf("CreateWriting err = %v, want ErrUnsafeMarkdownMedia", err)
+			}
+		})
+	}
+}
+
+func TestCreateWritingRouteMapsUnsafeMarkdownToValidationError(t *testing.T) {
+	repo := newContentRepo(t)
+	router := chi.NewRouter()
+	RegisterAdminRoutes(router, repo)
+
+	body := bytes.NewBufferString(`{"title":"Unsafe","content_md":"<img src=\"/uploads/a.png\">"}`)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/admin/writing", body))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	var response struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error.Code != "validation_error" {
+		t.Fatalf("error code = %q, want validation_error", response.Error.Code)
+	}
+}
+
+func insertContentMediaAsset(t *testing.T, repo *Repository) int64 {
+	t.Helper()
+	var id int64
+	err := repo.db.QueryRowContext(t.Context(), `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now()) RETURNING id`,
+		"cover.png",
+		"content-test-cover-"+time.Now().Format("150405.000000000"),
+		"image/png",
+		10,
+		1,
+		1,
+		`{}`,
+		"content-test-checksum-"+time.Now().Format("150405.000000000"),
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert media asset: %v", err)
+	}
+	return id
 }

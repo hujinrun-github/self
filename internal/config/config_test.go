@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestLoadRequiresCoreEnv(t *testing.T) {
 	t.Setenv("ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("ADMIN_PASSWORD", "1234567890abcdef")
 	t.Setenv("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("DATABASE_PATH", "data/portfolio.db")
+	t.Setenv("DATABASE_URL", "postgres://postgres@localhost:5432/portfolio?sslmode=disable")
 	t.Setenv("UPLOADS_DIR", "data/uploads")
 	t.Setenv("PRIVATE_UPLOADS_DIR", "data/private_uploads")
 	cfg, err := Load()
@@ -40,10 +41,25 @@ func TestLoadRejectsShortAdminPassword(t *testing.T) {
 	t.Setenv("ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("ADMIN_PASSWORD", "short")
 	t.Setenv("SESSION_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("DATABASE_PATH", "data/portfolio.db")
+	t.Setenv("DATABASE_URL", "postgres://postgres@localhost:5432/portfolio?sslmode=disable")
 	t.Setenv("UPLOADS_DIR", "data/uploads")
 	t.Setenv("PRIVATE_UPLOADS_DIR", "data/private_uploads")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for short ADMIN_PASSWORD")
+	}
+}
+
+func TestConfigStringRedactsDatabaseURL(t *testing.T) {
+	passwordURL := "postgres://" + "postgres" + ":" + "secret" + "@192.168.1.20:19588/portfolio?sslmode=disable"
+	cfg := Config{
+		SiteName:    "Portfolio",
+		DatabaseURL: passwordURL,
+	}
+	got := cfg.String()
+	if strings.Contains(got, "secret") || strings.Contains(got, "sslmode") {
+		t.Fatalf("String leaked database URL details: %s", got)
+	}
+	if !strings.Contains(got, "postgres://postgres@192.168.1.20:19588/portfolio") {
+		t.Fatalf("String() = %q", got)
 	}
 }

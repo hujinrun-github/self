@@ -2,26 +2,15 @@ package backup
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
-	appdb "portfolio/internal/db"
 )
 
 func TestRunSnapshotsDatabaseAndCopiesUploads(t *testing.T) {
 	ctx := context.Background()
-	sourceDB, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open source db: %v", err)
-	}
-	defer sourceDB.Close()
-
-	if _, err := sourceDB.Exec(`INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants_json, checksum_sha256, created_at) VALUES ('avatar.png', 'key-1', 'image/png', 10, 1, 1, '{}', 'sum-1', CURRENT_TIMESTAMP)`); err != nil {
-		t.Fatalf("seed db: %v", err)
-	}
 
 	root := t.TempDir()
 	uploadsDir := filepath.Join(root, "uploads")
@@ -39,24 +28,45 @@ func TestRunSnapshotsDatabaseAndCopiesUploads(t *testing.T) {
 		t.Fatalf("write private upload: %v", err)
 	}
 
+	var commandPath string
+	var args []string
+	var env []string
+	stubPGDump(t, func(_ context.Context, path string, commandArgs []string, commandEnv []string) error {
+		commandPath = path
+		args = append([]string(nil), commandArgs...)
+		env = append([]string(nil), commandEnv...)
+		return os.WriteFile(flagValue(t, commandArgs, "--file"), []byte("dump"), 0o644)
+	})
+
 	destinationDir := filepath.Join(t.TempDir(), "backup")
-	if err := Run(ctx, sourceDB, uploadsDir, destinationDir); err != nil {
+	sourceURL := "postgres://postgres:secret@db.example.test:5432/portfolio?sslmode=disable"
+	if err := Run(ctx, sourceURL, uploadsDir, destinationDir); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
-	snapshot, err := sql.Open("sqlite", filepath.Join(destinationDir, "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open snapshot: %v", err)
+	if commandPath != "pg_dump-test" {
+		t.Fatalf("pg_dump path = %q", commandPath)
 	}
-	defer snapshot.Close()
-	var count int
-	if err := snapshot.QueryRow(`SELECT COUNT(*) FROM media_assets WHERE storage_key = 'key-1'`).Scan(&count); err != nil {
-		t.Fatalf("query snapshot: %v", err)
+	for _, required := range []string{"--format=custom", "--no-owner", "--no-acl"} {
+		if !containsArg(args, required) {
+			t.Fatalf("pg_dump args missing %q: %v", required, args)
+		}
 	}
-	if count != 1 {
-		t.Fatalf("snapshot media count = %d", count)
+	if args[len(args)-1] != "postgres://postgres@db.example.test:5432/portfolio?sslmode=disable" {
+		t.Fatalf("database argument = %q", args[len(args)-1])
+	}
+	for _, value := range args {
+		if strings.Contains(value, "secret") {
+			t.Fatalf("pg_dump args leaked password: %v", args)
+		}
+	}
+	if !containsArg(env, "PGPASSWORD=secret") {
+		t.Fatalf("pg_dump env missing password: %v", env)
 	}
 
+	if _, err := os.Stat(filepath.Join(destinationDir, "database.dump")); err != nil {
+		t.Fatalf("expected database dump in backup: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(destinationDir, "uploads", "ab", "cd", "card.jpg")); err != nil {
 		t.Fatalf("expected upload derivative in backup: %v", err)
 	}
@@ -66,16 +76,14 @@ func TestRunSnapshotsDatabaseAndCopiesUploads(t *testing.T) {
 }
 
 func TestRunBlocksApplicationWritesWithMutex(t *testing.T) {
-	sourceDB, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open source db: %v", err)
-	}
-	defer sourceDB.Close()
-
 	uploadsDir := filepath.Join(t.TempDir(), "uploads")
 	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
 		t.Fatalf("create uploads: %v", err)
 	}
+
+	stubPGDump(t, func(_ context.Context, _ string, args []string, _ []string) error {
+		return os.WriteFile(flagValue(t, args, "--file"), []byte("dump"), 0o644)
+	})
 
 	locked := make(chan struct{})
 	release := make(chan struct{})
@@ -83,11 +91,11 @@ func TestRunBlocksApplicationWritesWithMutex(t *testing.T) {
 		close(locked)
 		<-release
 	}
-	defer func() { afterLock = nil }()
+	t.Cleanup(func() { afterLock = nil })
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(context.Background(), sourceDB, uploadsDir, filepath.Join(t.TempDir(), "backup"))
+		done <- Run(context.Background(), "postgres://postgres:secret@db.example.test:5432/portfolio?sslmode=disable", uploadsDir, filepath.Join(t.TempDir(), "backup"))
 	}()
 
 	select {
@@ -130,4 +138,38 @@ func TestRunBlocksApplicationWritesWithMutex(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("write did not resume after backup")
 	}
+}
+
+func stubPGDump(t *testing.T, fn func(context.Context, string, []string, []string) error) {
+	t.Helper()
+
+	originalLookup := lookupPGDumpPath
+	originalRun := runPGDump
+	lookupPGDumpPath = func() (string, error) { return "pg_dump-test", nil }
+	runPGDump = fn
+	t.Cleanup(func() {
+		lookupPGDumpPath = originalLookup
+		runPGDump = originalRun
+	})
+}
+
+func containsArg(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func flagValue(t *testing.T, values []string, flag string) string {
+	t.Helper()
+
+	for i := 0; i < len(values)-1; i++ {
+		if values[i] == flag {
+			return values[i+1]
+		}
+	}
+	t.Fatalf("flag %s missing from %v", flag, values)
+	return ""
 }

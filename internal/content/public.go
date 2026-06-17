@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 func (r *Repository) PublicProjectBySlug(ctx context.Context, slug string) (Project, error) {
 	var id int64
-	if err := r.db.QueryRowContext(ctx, `SELECT id FROM projects WHERE slug = ? AND status = ? AND published_at <= ?`, slug, StatusPublished, formatTime(r.clock())).Scan(&id); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT id FROM projects WHERE slug = $1 AND status = $2 AND published_at <= $3`, slug, StatusPublished, normalizeTime(r.clock())).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
@@ -35,7 +36,7 @@ func (r *Repository) PublicWriting(ctx context.Context, limit int) ([]Writing, e
 
 func (r *Repository) PublicWritingBySlug(ctx context.Context, slug string) (Writing, error) {
 	var id int64
-	if err := r.db.QueryRowContext(ctx, `SELECT id FROM writings WHERE slug = ? AND status = ? AND published_at <= ?`, slug, StatusPublished, formatTime(r.clock())).Scan(&id); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT id FROM writings WHERE slug = $1 AND status = $2 AND published_at <= $3`, slug, StatusPublished, normalizeTime(r.clock())).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Writing{}, ErrNotFound
 		}
@@ -62,7 +63,7 @@ func (r *Repository) PublicTalks(ctx context.Context, limit int) ([]Talk, error)
 
 func (r *Repository) PublicTalkBySlug(ctx context.Context, slug string) (Talk, error) {
 	var id int64
-	if err := r.db.QueryRowContext(ctx, `SELECT id FROM talks WHERE slug = ? AND status = ? AND published_at <= ?`, slug, StatusPublished, formatTime(r.clock())).Scan(&id); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT id FROM talks WHERE slug = $1 AND status = $2 AND published_at <= $3`, slug, StatusPublished, normalizeTime(r.clock())).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Talk{}, ErrNotFound
 		}
@@ -72,10 +73,13 @@ func (r *Repository) PublicTalkBySlug(ctx context.Context, slug string) (Talk, e
 }
 
 func (r *Repository) publicIDs(ctx context.Context, table string, limit int) ([]int64, error) {
+	if !publicTableAllowed(table) {
+		return nil, fmt.Errorf("unknown public table %s", table)
+	}
 	if limit <= 0 {
 		limit = 12
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM `+table+` WHERE status = ? AND published_at <= ? ORDER BY published_at DESC, sort_order ASC LIMIT ?`, StatusPublished, formatTime(r.clock()), limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM `+table+` WHERE status = $1 AND published_at <= $2 ORDER BY published_at DESC, sort_order ASC LIMIT $3`, StatusPublished, normalizeTime(r.clock()), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -89,4 +93,13 @@ func (r *Repository) publicIDs(ctx context.Context, table string, limit int) ([]
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func publicTableAllowed(table string) bool {
+	switch table {
+	case "writings", "talks":
+		return true
+	default:
+		return false
+	}
 }

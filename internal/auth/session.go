@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"portfolio/internal/storage"
 )
 
 const SessionCookieName = "portfolio_session"
@@ -33,26 +35,22 @@ func (s *Service) createSession(ctx context.Context, adminID int64) (Session, st
 	if err != nil {
 		return Session{}, "", err
 	}
-	now := s.clock()
+	now := storage.NormalizeTime(s.clock())
 	session := Session{
 		AdminID:   adminID,
 		CSRFHash:  hashToken(csrfToken),
 		CreatedAt: now,
 		LastSeen:  now,
-		ExpiresAt: now.Add(s.cfg.SessionTTL),
+		ExpiresAt: storage.NormalizeTime(now.Add(s.cfg.SessionTTL)),
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sessions (admin_id, session_token_hash, csrf_token_hash, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+	err = s.db.QueryRowContext(ctx, `INSERT INTO sessions (admin_id, session_token_hash, csrf_token_hash, created_at, last_seen_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 		adminID,
 		hashToken(rawToken),
 		session.CSRFHash,
-		formatTime(session.CreatedAt),
-		formatTime(session.LastSeen),
-		formatTime(session.ExpiresAt),
-	)
-	if err != nil {
-		return Session{}, "", err
-	}
-	session.ID, err = result.LastInsertId()
+		storage.NormalizeTime(session.CreatedAt),
+		storage.NormalizeTime(session.LastSeen),
+		storage.NormalizeTime(session.ExpiresAt),
+	).Scan(&session.ID)
 	if err != nil {
 		return Session{}, "", err
 	}
@@ -68,46 +66,34 @@ func (s *Service) sessionFromRequest(w http.ResponseWriter, r *http.Request) (Se
 	if err != nil {
 		return Session{}, false
 	}
-	now := s.clock()
+	now := storage.NormalizeTime(s.clock())
 	if now.After(session.ExpiresAt) || now.Sub(session.LastSeen) > s.cfg.SessionIdleTimeout {
 		_ = s.revokeSession(r.Context(), session.ID)
 		return Session{}, false
 	}
-	_, _ = s.db.ExecContext(r.Context(), `UPDATE sessions SET last_seen_at = ? WHERE id = ?`, formatTime(now), session.ID)
+	_, _ = s.db.ExecContext(r.Context(), `UPDATE sessions SET last_seen_at = $1 WHERE id = $2`, now, session.ID)
 	return session, true
 }
 
 func (s *Service) findSession(ctx context.Context, rawToken string) (Session, error) {
 	var session Session
-	var createdAt string
-	var lastSeen string
-	var expiresAt string
-	var revokedAt sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, admin_id, csrf_token_hash, created_at, last_seen_at, expires_at, revoked_at FROM sessions WHERE session_token_hash = ?`, hashToken(rawToken)).
-		Scan(&session.ID, &session.AdminID, &session.CSRFHash, &createdAt, &lastSeen, &expiresAt, &revokedAt)
+	var revokedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT id, admin_id, csrf_token_hash, created_at, last_seen_at, expires_at, revoked_at FROM sessions WHERE session_token_hash = $1`, hashToken(rawToken)).
+		Scan(&session.ID, &session.AdminID, &session.CSRFHash, &session.CreatedAt, &session.LastSeen, &session.ExpiresAt, &revokedAt)
 	if err != nil {
 		return Session{}, err
 	}
 	if revokedAt.Valid {
 		return Session{}, sql.ErrNoRows
 	}
-	session.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
-	if err != nil {
-		return Session{}, err
-	}
-	session.LastSeen, err = time.Parse(time.RFC3339Nano, lastSeen)
-	if err != nil {
-		return Session{}, err
-	}
-	session.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAt)
-	if err != nil {
-		return Session{}, err
-	}
+	session.CreatedAt = storage.NormalizeTime(session.CreatedAt)
+	session.LastSeen = storage.NormalizeTime(session.LastSeen)
+	session.ExpiresAt = storage.NormalizeTime(session.ExpiresAt)
 	return session, nil
 }
 
 func (s *Service) revokeSession(ctx context.Context, sessionID int64) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET revoked_at = ? WHERE id = ?`, formatTime(s.clock()), sessionID)
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET revoked_at = $1 WHERE id = $2`, storage.NormalizeTime(s.clock()), sessionID)
 	return err
 }
 
@@ -169,8 +155,4 @@ func randomToken(byteCount int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-func formatTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }

@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"portfolio/internal/storage"
+
 	_ "golang.org/x/image/webp"
 )
 
@@ -34,6 +36,7 @@ type Service struct {
 	db                *sql.DB
 	uploadsDir        string
 	privateUploadsDir string
+	storageKeyFunc    func() (string, error)
 }
 
 type Asset struct {
@@ -50,7 +53,12 @@ type Asset struct {
 func NewService(database *sql.DB, uploadsDir string, privateUploadsDir string) *Service {
 	_ = os.MkdirAll(uploadsDir, 0o755)
 	_ = os.MkdirAll(privateUploadsDir, 0o755)
-	return &Service{db: database, uploadsDir: uploadsDir, privateUploadsDir: privateUploadsDir}
+	return &Service{
+		db:                database,
+		uploadsDir:        uploadsDir,
+		privateUploadsDir: privateUploadsDir,
+		storageKeyFunc:    randomStorageKey,
+	}
 }
 
 func (s *Service) Upload(ctx context.Context, fileName string, reader io.Reader) (Asset, error) {
@@ -89,19 +97,38 @@ func (s *Service) Upload(ctx context.Context, fileName string, reader io.Reader)
 		return Asset{}, ErrUploadInvalid
 	}
 
-	storageKey, err := randomStorageKey()
+	storageKey, err := s.storageKeyFunc()
 	if err != nil {
 		return Asset{}, err
 	}
-	variants, err := s.generateVariants(storageKey, img)
+	stagingDir := filepath.Join(s.uploadsDir, ".staging-"+storageKey)
+	finalDir := storageKeyDir(s.uploadsDir, storageKey)
+	variants, err := s.generateVariants(storageKey, img, stagingDir)
 	if err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return Asset{}, err
 	}
 	variantsJSON, err := json.Marshal(variants)
 	if err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return Asset{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants_json, checksum_sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return Asset{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var id int64
+	now := storage.NormalizeTime(time.Now())
+	err = tx.QueryRowContext(ctx, `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) RETURNING id`,
 		filepath.Base(fileName),
 		storageKey,
 		mimeType,
@@ -110,15 +137,26 @@ func (s *Service) Upload(ctx context.Context, fileName string, reader io.Reader)
 		height,
 		string(variantsJSON),
 		checksum,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	)
+		now,
+	).Scan(&id)
 	if err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return Asset{}, err
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
+		_ = os.RemoveAll(stagingDir)
 		return Asset{}, err
 	}
+	if err := os.Rename(stagingDir, finalDir); err != nil {
+		_ = tx.Rollback()
+		_ = os.RemoveAll(stagingDir)
+		return Asset{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = os.RemoveAll(finalDir)
+		return Asset{}, err
+	}
+	committed = true
 	return Asset{
 		ID:         id,
 		FileName:   filepath.Base(fileName),
@@ -227,7 +265,10 @@ func (s *Service) Delete(ctx context.Context, mediaID int64) error {
 	if referenced {
 		return ErrReferenced
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM media_assets WHERE id = ?`, mediaID)
+	_, err = s.db.ExecContext(ctx, `DELETE FROM media_assets WHERE id = $1`, mediaID)
+	if storage.IsSQLState(err, storage.CodeForeignKeyViolation) {
+		return ErrReferenced
+	}
 	return err
 }
 
@@ -240,19 +281,24 @@ func (s *Service) List(ctx context.Context, page int, limit int, query string) (
 	}
 	offset := (page - 1) * limit
 	pattern := "%" + query + "%"
-	rows, err := s.db.QueryContext(ctx, `SELECT id, file_name, storage_key, mime_type, width, height, variants_json FROM media_assets WHERE file_name LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?`, pattern, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, file_name, storage_key, mime_type, width, height, variants,
+		EXISTS (SELECT 1 FROM media_references WHERE media_asset_id = media_assets.id) AS referenced
+		FROM media_assets
+		WHERE file_name ILIKE $1
+		ORDER BY id DESC
+		LIMIT $2 OFFSET $3`, pattern, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	assets := []Asset{}
 	for rows.Next() {
 		var asset Asset
-		var rawVariants string
-		if err := rows.Scan(&asset.ID, &asset.FileName, &asset.StorageKey, &asset.MimeType, &asset.Width, &asset.Height, &rawVariants); err != nil {
+		var rawVariants []byte
+		if err := rows.Scan(&asset.ID, &asset.FileName, &asset.StorageKey, &asset.MimeType, &asset.Width, &asset.Height, &rawVariants, &asset.Referenced); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(rawVariants), &asset.Variants); err != nil {
+		if err := json.Unmarshal(rawVariants, &asset.Variants); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("decode variants: %w", err)
 		}
@@ -264,13 +310,6 @@ func (s *Service) List(ctx context.Context, page int, limit int, query string) (
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
-	}
-	for index := range assets {
-		referenced, err := s.IsReferenced(ctx, assets[index].ID)
-		if err != nil {
-			return nil, err
-		}
-		assets[index].Referenced = referenced
 	}
 	return assets, nil
 }
