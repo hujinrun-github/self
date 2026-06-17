@@ -3,15 +3,15 @@ package profile
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestAdminProfileReturnsSocialLinksAndETag(t *testing.T) {
@@ -118,6 +118,79 @@ func TestSocialLinkReplacementBumpsProfileUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestSaveAdminConcurrentWithSameETagAllowsOneWrite(t *testing.T) {
+	repo, _ := newProfileTestServer(t)
+	_, etag, err := repo.GetAdmin(t.Context())
+	if err != nil {
+		t.Fatalf("GetAdmin: %v", err)
+	}
+
+	repo.clock = func() time.Time { return time.Date(2026, 6, 15, 3, 2, 1, 987654000, time.UTC) }
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			errs <- repo.SaveAdmin(t.Context(), ProfileInput{Name: "Concurrent"}, etag)
+		}()
+	}
+
+	var success int
+	var conflicts int
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		switch {
+		case err == nil:
+			success++
+		case errors.Is(err, ErrConflict):
+			conflicts++
+		default:
+			t.Fatalf("SaveAdmin concurrent err = %v", err)
+		}
+	}
+	if success != 1 || conflicts != 1 {
+		t.Fatalf("success=%d conflicts=%d, want 1 and 1", success, conflicts)
+	}
+}
+
+func TestSaveAdminRebuildsProfileMediaReferences(t *testing.T) {
+	repo, _ := newProfileTestServer(t)
+	var mediaID int64
+	err := repo.db.QueryRowContext(t.Context(), `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now()) RETURNING id`,
+		"avatar.png",
+		"profile-avatar",
+		"image/png",
+		10,
+		1,
+		1,
+		`{}`,
+		"sum-profile-avatar",
+	).Scan(&mediaID)
+	if err != nil {
+		t.Fatalf("insert media asset: %v", err)
+	}
+
+	_, etag, err := repo.GetAdmin(t.Context())
+	if err != nil {
+		t.Fatalf("GetAdmin: %v", err)
+	}
+	if err := repo.SaveAdmin(t.Context(), ProfileInput{Name: "Ada", AvatarMediaID: &mediaID}, etag); err != nil {
+		t.Fatalf("SaveAdmin: %v", err)
+	}
+
+	var count int
+	err = repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2 AND source = $3 AND media_asset_id = $4`,
+		"profile",
+		int64(1),
+		"avatar",
+		mediaID,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("count media references: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("media reference count = %d, want 1", count)
+	}
+}
+
 func TestPublicProfileReturnsPublicFieldsAndLinks(t *testing.T) {
 	repo, handler := newProfileTestServer(t)
 	seedProfile(t, repo, ProfileInput{
@@ -147,11 +220,7 @@ func TestPublicProfileReturnsPublicFieldsAndLinks(t *testing.T) {
 
 func newProfileTestServer(t *testing.T) (*Repository, http.Handler) {
 	t.Helper()
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database, _ := dbtest.OpenPostgres(t)
 
 	repo := NewRepository(database)
 	router := chi.NewRouter()
