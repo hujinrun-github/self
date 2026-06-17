@@ -77,14 +77,14 @@ func (r *Repository) createProjectAttempt(ctx context.Context, input ProjectInpu
 	}
 	defer tx.Rollback()
 
+	if err := lockContentOrder(ctx, tx, "projects"); err != nil {
+		return Project{}, err
+	}
 	slug, err := r.uniqueSlug(ctx, tx, "projects", 0, chooseSlugInput(input.Slug, input.Title))
 	if err != nil {
 		return Project{}, err
 	}
 	now := normalizeTime(r.clock())
-	if err := lockContentOrder(ctx, tx, "projects"); err != nil {
-		return Project{}, err
-	}
 	sortOrder, err := nextSortOrder(ctx, tx, "projects")
 	if err != nil {
 		return Project{}, err
@@ -226,7 +226,7 @@ func (r *Repository) DeleteProject(ctx context.Context, id int64) error {
 
 	var status Status
 	var publishedAt sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT status, published_at FROM projects WHERE id = $1`, id).Scan(&status, &publishedAt); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT status, published_at FROM projects WHERE id = $1 FOR UPDATE`, id).Scan(&status, &publishedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}

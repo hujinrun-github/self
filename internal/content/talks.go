@@ -56,11 +56,11 @@ func (r *Repository) createTalkAttempt(ctx context.Context, input TalkInput) (Ta
 		return Talk{}, err
 	}
 	defer tx.Rollback()
-	slug, err := r.uniqueSlug(ctx, tx, "talks", 0, chooseSlugInput(input.Slug, input.Title))
-	if err != nil {
+	if err := lockContentOrder(ctx, tx, "talks"); err != nil {
 		return Talk{}, err
 	}
-	if err := lockContentOrder(ctx, tx, "talks"); err != nil {
+	slug, err := r.uniqueSlug(ctx, tx, "talks", 0, chooseSlugInput(input.Slug, input.Title))
+	if err != nil {
 		return Talk{}, err
 	}
 	sortOrder, err := nextSortOrder(ctx, tx, "talks")

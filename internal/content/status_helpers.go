@@ -5,8 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
+)
+
+var (
+	markdownInlineRawUploadImageRE     = regexp.MustCompile(`(?is)!\[[^\]]*\]\s*\(\s*['"]?\s*/uploads/[^\s)'"]+\.(?:png|jpe?g|gif|webp|avif|svg)(?:[?#][^\s)'"]*)?`)
+	markdownImageReferenceUseRE        = regexp.MustCompile(`(?is)!\[([^\]]*)\]\s*\[([^\]]*)\]`)
+	markdownRawUploadReferenceDefineRE = regexp.MustCompile(`(?im)^\s*\[([^\]]+)\]:\s*['"]?\s*/uploads/[^\s)'"]+\.(?:png|jpe?g|gif|webp|avif|svg)(?:[?#][^\s)'"]*)?`)
+	htmlRawUploadImageRE               = regexp.MustCompile(`(?is)<img\b[^>]*\bsrc\s*=\s*(?:"\s*/uploads/|'\s*/uploads/|/uploads/)`)
 )
 
 func (r *Repository) setRoutableStatus(ctx context.Context, table string, id int64, status Status, publishedAt *time.Time) error {
@@ -50,8 +58,24 @@ func contentTableAllowed(table string) bool {
 }
 
 func validateMarkdownMedia(content string) error {
-	if strings.Contains(content, "](/uploads/") || strings.Contains(content, `](/uploads\`) {
+	if markdownInlineRawUploadImageRE.MatchString(content) || htmlRawUploadImageRE.MatchString(content) {
 		return ErrUnsafeMarkdownMedia
+	}
+	imageReferenceIDs := map[string]bool{}
+	for _, match := range markdownImageReferenceUseRE.FindAllStringSubmatch(content, -1) {
+		id := strings.TrimSpace(match[2])
+		if id == "" {
+			id = strings.TrimSpace(match[1])
+		}
+		imageReferenceIDs[strings.ToLower(id)] = true
+	}
+	if len(imageReferenceIDs) == 0 {
+		return nil
+	}
+	for _, match := range markdownRawUploadReferenceDefineRE.FindAllStringSubmatch(content, -1) {
+		if imageReferenceIDs[strings.ToLower(strings.TrimSpace(match[1]))] {
+			return ErrUnsafeMarkdownMedia
+		}
 	}
 	return nil
 }

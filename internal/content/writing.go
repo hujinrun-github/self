@@ -59,14 +59,14 @@ func (r *Repository) createWritingAttempt(ctx context.Context, input WritingInpu
 	}
 	defer tx.Rollback()
 
+	if err := lockContentOrder(ctx, tx, "writings"); err != nil {
+		return Writing{}, err
+	}
 	slug, err := r.uniqueSlug(ctx, tx, "writings", 0, chooseSlugInput(input.Slug, input.Title))
 	if err != nil {
 		return Writing{}, err
 	}
 	now := normalizeTime(r.clock())
-	if err := lockContentOrder(ctx, tx, "writings"); err != nil {
-		return Writing{}, err
-	}
 	sortOrder, err := nextSortOrder(ctx, tx, "writings")
 	if err != nil {
 		return Writing{}, err

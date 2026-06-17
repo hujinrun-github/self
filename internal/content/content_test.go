@@ -1,9 +1,15 @@
 package content
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func TestProjectCreateDefaultsToDraftAndPublishSetsPublishedAt(t *testing.T) {
@@ -123,9 +129,10 @@ func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
 
 func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
 	repo := newContentRepo(t)
-	errs := make(chan error, 2)
-	projects := make(chan Project, 2)
-	for i := 0; i < 2; i++ {
+	const createCount = 12
+	errs := make(chan error, createCount)
+	projects := make(chan Project, createCount)
+	for i := 0; i < createCount; i++ {
 		go func() {
 			project, err := repo.CreateProject(t.Context(), ProjectInput{Title: "Same Title"})
 			if err != nil {
@@ -136,18 +143,23 @@ func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
 			errs <- nil
 		}()
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < createCount; i++ {
 		if err := <-errs; err != nil {
 			t.Fatalf("CreateProject concurrent: %v", err)
 		}
 	}
-	first := <-projects
-	second := <-projects
-	if first.Slug == second.Slug {
-		t.Fatalf("duplicate slug: first=%+v second=%+v", first, second)
-	}
-	if first.SortOrder == second.SortOrder {
-		t.Fatalf("duplicate sort_order: first=%+v second=%+v", first, second)
+	slugs := map[string]bool{}
+	sortOrders := map[int]bool{}
+	for i := 0; i < createCount; i++ {
+		project := <-projects
+		if slugs[project.Slug] {
+			t.Fatalf("duplicate slug %q in project %+v", project.Slug, project)
+		}
+		slugs[project.Slug] = true
+		if sortOrders[project.SortOrder] {
+			t.Fatalf("duplicate sort_order %d in project %+v", project.SortOrder, project)
+		}
+		sortOrders[project.SortOrder] = true
 	}
 }
 
@@ -178,12 +190,48 @@ func TestHardDeleteDraftProjectClearsMediaReferences(t *testing.T) {
 
 func TestWritingRejectsRawUploadsMarkdownReference(t *testing.T) {
 	repo := newContentRepo(t)
-	_, err := repo.CreateWriting(t.Context(), WritingInput{
-		Title:     "Unsafe Markdown",
-		ContentMD: "![x](/uploads/a/b/card.jpg)",
-	})
-	if !errors.Is(err, ErrUnsafeMarkdownMedia) {
-		t.Fatalf("CreateWriting err = %v, want ErrUnsafeMarkdownMedia", err)
+	cases := map[string]string{
+		"inline":      "![x](/uploads/a/b/card.jpg)",
+		"inlineSpace": "![x]( /uploads/a.png)",
+		"htmlDouble":  `<img src="/uploads/a.png">`,
+		"htmlSingle":  `<img alt="x" src='/uploads/a.png'>`,
+		"reference":   "![x][cover]\n\n[cover]: /uploads/a.png",
+	}
+	for name, contentMD := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := repo.CreateWriting(t.Context(), WritingInput{
+				Title:     "Unsafe Markdown " + name,
+				ContentMD: contentMD,
+			})
+			if !errors.Is(err, ErrUnsafeMarkdownMedia) {
+				t.Fatalf("CreateWriting err = %v, want ErrUnsafeMarkdownMedia", err)
+			}
+		})
+	}
+}
+
+func TestCreateWritingRouteMapsUnsafeMarkdownToValidationError(t *testing.T) {
+	repo := newContentRepo(t)
+	router := chi.NewRouter()
+	RegisterAdminRoutes(router, repo)
+
+	body := bytes.NewBufferString(`{"title":"Unsafe","content_md":"<img src=\"/uploads/a.png\">"}`)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/admin/writing", body))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	var response struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error.Code != "validation_error" {
+		t.Fatalf("error code = %q, want validation_error", response.Error.Code)
 	}
 }
 
