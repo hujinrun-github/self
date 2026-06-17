@@ -18,9 +18,16 @@ type Variant struct {
 	SizeBytes int64  `json:"size_bytes"`
 }
 
-func (s *Service) generateVariants(storageKey string, img image.Image) (map[string]Variant, error) {
-	baseDir := filepath.Join(s.uploadsDir, storageKey[:2], storageKey[2:4])
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+func storageKeyDir(root string, storageKey string) string {
+	return filepath.Join(root, storageKey[:2], storageKey[2:4])
+}
+
+func publicVariantPath(storageKey string, fileName string) string {
+	return "/uploads/" + filepath.ToSlash(filepath.Join(storageKey[:2], storageKey[2:4], fileName))
+}
+
+func (s *Service) generateVariants(storageKey string, img image.Image, outputDir string) (map[string]Variant, error) {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, err
 	}
 	variants := map[string]Variant{}
@@ -41,11 +48,12 @@ func (s *Service) generateVariants(storageKey string, img image.Image) (map[stri
 		} else {
 			derivative = imaging.Fit(img, spec.width, spec.height, imaging.Lanczos)
 		}
-		path := filepath.Join(baseDir, spec.name+".jpg")
+		fileName := spec.name + ".jpg"
+		path := filepath.Join(outputDir, fileName)
 		if err := saveJPEG(path, derivative); err != nil {
 			return nil, err
 		}
-		variant, err := variantFor(path, s.uploadsDir, "image/jpeg")
+		variant, err := variantFor(path, publicVariantPath(storageKey, fileName), "image/jpeg")
 		if err != nil {
 			return nil, err
 		}
@@ -53,11 +61,11 @@ func (s *Service) generateVariants(storageKey string, img image.Image) (map[stri
 	}
 
 	avatar := imaging.Fill(img, 400, 400, imaging.Center, imaging.Lanczos)
-	avatarPath := filepath.Join(baseDir, "avatar.png")
+	avatarPath := filepath.Join(outputDir, "avatar.png")
 	if err := savePNG(avatarPath, avatar); err != nil {
 		return nil, err
 	}
-	variant, err := variantFor(avatarPath, s.uploadsDir, "image/png")
+	variant, err := variantFor(avatarPath, publicVariantPath(storageKey, "avatar.png"), "image/png")
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +91,7 @@ func savePNG(path string, img image.Image) error {
 	return png.Encode(file, img)
 }
 
-func variantFor(path string, uploadsDir string, mimeType string) (Variant, error) {
+func variantFor(path string, publicPath string, mimeType string) (Variant, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return Variant{}, err
@@ -92,12 +100,8 @@ func variantFor(path string, uploadsDir string, mimeType string) (Variant, error
 	if err != nil {
 		return Variant{}, err
 	}
-	relative, err := filepath.Rel(uploadsDir, path)
-	if err != nil {
-		return Variant{}, err
-	}
 	return Variant{
-		Path:      "/uploads/" + filepath.ToSlash(relative),
+		Path:      publicPath,
 		Width:     cfg.Bounds().Dx(),
 		Height:    cfg.Bounds().Dy(),
 		MimeType:  mimeType,
