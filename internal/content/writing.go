@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-
-	"portfolio/internal/storage"
 )
 
 type WritingInput struct {
@@ -45,7 +43,7 @@ func (r *Repository) CreateWriting(ctx context.Context, input WritingInput) (Wri
 		if err == nil {
 			return writing, nil
 		}
-		if !storage.IsSQLState(err, storage.CodeUniqueViolation) {
+		if !isSlugUniqueViolation(err, "writings") {
 			return Writing{}, err
 		}
 	}

@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"portfolio/internal/storage"
 )
 
 type Repository struct {
@@ -63,7 +61,7 @@ func (r *Repository) CreateProject(ctx context.Context, input ProjectInput) (Pro
 		if err == nil {
 			return project, nil
 		}
-		if !storage.IsSQLState(err, storage.CodeUniqueViolation) {
+		if !isSlugUniqueViolation(err, "projects") {
 			return Project{}, err
 		}
 	}
@@ -176,7 +174,7 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 		id,
 	)
 	if err != nil {
-		if storage.IsSQLState(err, storage.CodeUniqueViolation) {
+		if isSlugUniqueViolation(err, "projects") {
 			return Project{}, ErrSlugConflict
 		}
 		return Project{}, err

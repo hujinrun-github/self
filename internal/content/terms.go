@@ -11,12 +11,12 @@ func (r *Repository) replaceProjectTechs(ctx context.Context, tx *sql.Tx, projec
 	if _, err := tx.ExecContext(ctx, `DELETE FROM project_tech WHERE project_id = $1`, projectID); err != nil {
 		return err
 	}
-	for index, name := range names {
-		slug, err := Slugify(name)
-		if err != nil {
-			return err
-		}
-		techID, err := upsertTerm(ctx, tx, "techs", name, slug)
+	terms, err := uniqueTermInputs(names)
+	if err != nil {
+		return err
+	}
+	for index, term := range terms {
+		techID, err := upsertTerm(ctx, tx, "techs", term.name, term.slug)
 		if err != nil {
 			return err
 		}
@@ -48,12 +48,12 @@ func (r *Repository) replaceWritingTags(ctx context.Context, tx *sql.Tx, writing
 	if _, err := tx.ExecContext(ctx, `DELETE FROM writing_tags WHERE writing_id = $1`, writingID); err != nil {
 		return err
 	}
-	for index, name := range names {
-		slug, err := Slugify(name)
-		if err != nil {
-			return err
-		}
-		tagID, err := upsertTerm(ctx, tx, "tags", name, slug)
+	terms, err := uniqueTermInputs(names)
+	if err != nil {
+		return err
+	}
+	for index, term := range terms {
+		tagID, err := upsertTerm(ctx, tx, "tags", term.name, term.slug)
 		if err != nil {
 			return err
 		}
@@ -62,6 +62,28 @@ func (r *Repository) replaceWritingTags(ctx context.Context, tx *sql.Tx, writing
 		}
 	}
 	return nil
+}
+
+type termInput struct {
+	name string
+	slug string
+}
+
+func uniqueTermInputs(names []string) ([]termInput, error) {
+	terms := make([]termInput, 0, len(names))
+	seen := map[string]bool{}
+	for _, name := range names {
+		slug, err := Slugify(name)
+		if err != nil {
+			return nil, err
+		}
+		if seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		terms = append(terms, termInput{name: name, slug: slug})
+	}
+	return terms, nil
 }
 
 func (r *Repository) writingTags(ctx context.Context, writingID int64) ([]Term, error) {

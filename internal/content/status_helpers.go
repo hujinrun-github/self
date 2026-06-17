@@ -8,6 +8,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"portfolio/internal/storage"
 )
 
 var (
@@ -55,6 +59,14 @@ func contentTableAllowed(table string) bool {
 	default:
 		return false
 	}
+}
+
+func isSlugUniqueViolation(err error, table string) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != storage.CodeUniqueViolation {
+		return false
+	}
+	return pgErr.ConstraintName == table+"_slug_key"
 }
 
 func validateMarkdownMedia(content string) error {

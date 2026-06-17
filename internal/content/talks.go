@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-
-	"portfolio/internal/storage"
 )
 
 type TalkInput struct {
@@ -43,7 +41,7 @@ func (r *Repository) CreateTalk(ctx context.Context, input TalkInput) (Talk, err
 		if err == nil {
 			return talk, nil
 		}
-		if !storage.IsSQLState(err, storage.CodeUniqueViolation) {
+		if !isSlugUniqueViolation(err, "talks") {
 			return Talk{}, err
 		}
 	}

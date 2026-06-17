@@ -127,6 +127,25 @@ func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
 	}
 }
 
+func TestWritingTagsAndProjectTechsDedupeDuplicateInputs(t *testing.T) {
+	repo := newContentRepo(t)
+	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Duplicate Tags", Tags: []string{"Go", "Go", "React"}})
+	if err != nil {
+		t.Fatalf("CreateWriting: %v", err)
+	}
+	if len(writing.Tags) != 2 || writing.Tags[0].Slug != "go" || writing.Tags[0].SortOrder != 10 || writing.Tags[1].Slug != "react" || writing.Tags[1].SortOrder != 20 {
+		t.Fatalf("writing tags = %+v", writing.Tags)
+	}
+
+	project, err := repo.CreateProject(t.Context(), ProjectInput{Title: "Duplicate Techs", Techs: []string{"Go", "Go", "React"}})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if len(project.Techs) != 2 || project.Techs[0].Slug != "go" || project.Techs[0].SortOrder != 10 || project.Techs[1].Slug != "react" || project.Techs[1].SortOrder != 20 {
+		t.Fatalf("project techs = %+v", project.Techs)
+	}
+}
+
 func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
 	repo := newContentRepo(t)
 	const createCount = 12
