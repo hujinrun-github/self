@@ -22,6 +22,7 @@ Run the combined server after building `web/dist`:
 
 ```powershell
 $env:APP_ORIGIN="http://localhost:8080"
+$env:APP_ORIGINS="http://127.0.0.1:8080,http://localhost:8080"
 $env:PUBLIC_BASE_URL="http://localhost:8080"
 $env:SITE_NAME="Portfolio"
 $env:ADMIN_EMAIL="admin@example.com"
@@ -33,7 +34,7 @@ $env:PRIVATE_UPLOADS_DIR="data/private_uploads"
 go run ./cmd/server
 ```
 
-Set `PORT` to override the default `8080`.
+Set `PORT` to override the default `8080`. `APP_ORIGINS` is optional and accepts a comma-separated allowlist for additional admin origins, such as a local preview URL plus a Tailscale Funnel URL.
 
 ## Deployment Notes
 

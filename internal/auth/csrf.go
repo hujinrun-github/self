@@ -29,7 +29,7 @@ func (s *Service) validCSRF(ctx context.Context, sessionID int64, rawToken strin
 
 func (s *Service) validOriginOrReferer(r *http.Request) bool {
 	if origin := r.Header.Get("Origin"); origin != "" {
-		return origin == s.cfg.AppOrigin
+		return s.allowedOrigin(origin)
 	}
 	referer := r.Header.Get("Referer")
 	if referer == "" {
@@ -39,5 +39,15 @@ func (s *Service) validOriginOrReferer(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	return parsed.Scheme+"://"+parsed.Host == s.cfg.AppOrigin
+	return s.allowedOrigin(parsed.Scheme + "://" + parsed.Host)
+}
+
+func (s *Service) allowedOrigin(origin string) bool {
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	for _, allowed := range s.cfg.AllowedOrigins {
+		if origin == strings.TrimRight(strings.TrimSpace(allowed), "/") {
+			return true
+		}
+	}
+	return origin == strings.TrimRight(strings.TrimSpace(s.cfg.AppOrigin), "/")
 }

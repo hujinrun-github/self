@@ -36,8 +36,26 @@ func TestLoginRequiresOriginButNotSessionOrCSRF(t *testing.T) {
 	if withOrigin.Code != http.StatusOK {
 		t.Fatalf("login with Origin status = %d body=%s", withOrigin.Code, withOrigin.Body.String())
 	}
-	if len(withOrigin.Result().Cookies()) == 0 {
-		t.Fatal("expected login to set session cookie")
+	sessionCookie := findSessionCookie(t, withOrigin.Result().Cookies())
+	if sessionCookie.Secure {
+		t.Fatal("local http login should not set Secure on the session cookie")
+	}
+}
+
+func TestLoginAllowsAdditionalConfiguredOrigin(t *testing.T) {
+	service, _ := newTestService(t)
+	handler := adminTestRouter(service)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/login", loginBody())
+	req.Header.Set("Origin", "https://tylerhu-1.king-shiner.ts.net:10000")
+	handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("login with additional Origin status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	sessionCookie := findSessionCookie(t, recorder.Result().Cookies())
+	if !sessionCookie.Secure {
+		t.Fatal("https login should set Secure on the session cookie")
 	}
 }
 
@@ -112,6 +130,7 @@ func newTestService(t *testing.T) (*Service, *sql.DB) {
 
 	cfg := config.Config{
 		AppOrigin:          "http://localhost:8080",
+		AllowedOrigins:     []string{"http://localhost:8080", "https://tylerhu-1.king-shiner.ts.net:10000"},
 		PublicBaseURL:      "http://localhost:8080",
 		SiteName:           "Portfolio",
 		AdminEmail:         "admin@example.com",
@@ -145,16 +164,7 @@ func loginAndFetchCSRF(t *testing.T, handler http.Handler) (*http.Cookie, string
 	if login.Code != http.StatusOK {
 		t.Fatalf("login status = %d body=%s", login.Code, login.Body.String())
 	}
-	var sessionCookie *http.Cookie
-	for _, cookie := range login.Result().Cookies() {
-		if cookie.Name == SessionCookieName {
-			sessionCookie = cookie
-			break
-		}
-	}
-	if sessionCookie == nil {
-		t.Fatal("missing session cookie")
-	}
+	sessionCookie := findSessionCookie(t, login.Result().Cookies())
 
 	csrf := httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/admin/csrf", nil)
@@ -173,6 +183,17 @@ func loginAndFetchCSRF(t *testing.T, handler http.Handler) (*http.Cookie, string
 		t.Fatal("empty csrf token")
 	}
 	return sessionCookie, body.CSRFToken
+}
+
+func findSessionCookie(t *testing.T, cookies []*http.Cookie) *http.Cookie {
+	t.Helper()
+	for _, cookie := range cookies {
+		if cookie.Name == SessionCookieName {
+			return cookie
+		}
+	}
+	t.Fatal("missing session cookie")
+	return nil
 }
 
 func loginBody() *bytes.Reader {

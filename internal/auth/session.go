@@ -111,19 +111,19 @@ func (s *Service) revokeSession(ctx context.Context, sessionID int64) error {
 	return err
 }
 
-func (s *Service) sessionCookie(rawToken string, expiresAt time.Time) *http.Cookie {
+func (s *Service) sessionCookie(rawToken string, expiresAt time.Time, r *http.Request) *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    rawToken,
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(s.cfg.PublicBaseURL, "https://"),
+		Secure:   s.secureCookieForRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	}
 }
 
-func (s *Service) clearSessionCookie() *http.Cookie {
+func (s *Service) clearSessionCookie(r *http.Request) *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",
@@ -131,9 +131,31 @@ func (s *Service) clearSessionCookie() *http.Cookie {
 		Expires:  time.Unix(0, 0).UTC(),
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(s.cfg.PublicBaseURL, "https://"),
+		Secure:   s.secureCookieForRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+func (s *Service) secureCookieForRequest(r *http.Request) bool {
+	if r != nil {
+		if r.TLS != nil {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+			return true
+		}
+		if strings.Contains(strings.ToLower(r.Header.Get("Forwarded")), "proto=https") {
+			return true
+		}
+		requestOrigin := strings.TrimSpace(r.Header.Get("Origin"))
+		if requestOrigin == "" {
+			requestOrigin = strings.TrimSpace(r.Header.Get("Referer"))
+		}
+		if requestOrigin != "" {
+			return strings.HasPrefix(strings.ToLower(requestOrigin), "https://")
+		}
+	}
+	return strings.HasPrefix(strings.ToLower(s.cfg.PublicBaseURL), "https://")
 }
 
 func hashToken(raw string) string {

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type Config struct {
 	AppOrigin          string
+	AllowedOrigins     []string
 	PublicBaseURL      string
 	SiteName           string
 	AdminEmail         string
@@ -23,8 +25,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	appOrigin := strings.TrimSpace(os.Getenv("APP_ORIGIN"))
 	cfg := Config{
-		AppOrigin:          os.Getenv("APP_ORIGIN"),
+		AppOrigin:          appOrigin,
+		AllowedOrigins:     parseAllowedOrigins(appOrigin, os.Getenv("APP_ORIGINS")),
 		PublicBaseURL:      os.Getenv("PUBLIC_BASE_URL"),
 		SiteName:           os.Getenv("SITE_NAME"),
 		AdminEmail:         os.Getenv("ADMIN_EMAIL"),
@@ -48,6 +52,30 @@ func Load() (Config, error) {
 		return Config{}, errors.New("SESSION_SECRET must be at least 32 characters")
 	}
 	return cfg, nil
+}
+
+func parseAllowedOrigins(primary string, extra string) []string {
+	seen := make(map[string]struct{})
+	origins := make([]string, 0, 1)
+	add := func(value string) {
+		value = strings.TrimRight(strings.TrimSpace(value), "/")
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		origins = append(origins, value)
+	}
+
+	add(primary)
+	for _, value := range strings.FieldsFunc(extra, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	}) {
+		add(value)
+	}
+	return origins
 }
 
 func durationFromHours(name string, fallback int) time.Duration {

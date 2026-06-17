@@ -1,9 +1,13 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestLoadRequiresCoreEnv(t *testing.T) {
 	t.Setenv("APP_ORIGIN", "http://localhost:8080")
+	t.Setenv("APP_ORIGINS", "http://127.0.0.1:18182, https://tylerhu-1.king-shiner.ts.net:10000, http://localhost:8080/")
 	t.Setenv("PUBLIC_BASE_URL", "http://localhost:8080")
 	t.Setenv("SITE_NAME", "Portfolio")
 	t.Setenv("ADMIN_EMAIL", "admin@example.com")
@@ -18,6 +22,14 @@ func TestLoadRequiresCoreEnv(t *testing.T) {
 	}
 	if cfg.PublicBaseURL != "http://localhost:8080" {
 		t.Fatalf("PublicBaseURL = %q", cfg.PublicBaseURL)
+	}
+	wantOrigins := []string{
+		"http://localhost:8080",
+		"http://127.0.0.1:18182",
+		"https://tylerhu-1.king-shiner.ts.net:10000",
+	}
+	if !reflect.DeepEqual(cfg.AllowedOrigins, wantOrigins) {
+		t.Fatalf("AllowedOrigins = %#v, want %#v", cfg.AllowedOrigins, wantOrigins)
 	}
 }
 

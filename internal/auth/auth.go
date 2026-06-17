@@ -121,7 +121,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Could not create session")
 		return
 	}
-	http.SetCookie(w, s.sessionCookie(rawToken, session.ExpiresAt))
+	http.SetCookie(w, s.sessionCookie(rawToken, session.ExpiresAt, r))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -131,7 +131,7 @@ func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", "Could not revoke session")
 		return
 	}
-	http.SetCookie(w, s.clearSessionCookie())
+	http.SetCookie(w, s.clearSessionCookie(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 
