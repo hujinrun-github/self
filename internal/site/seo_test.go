@@ -2,12 +2,11 @@ package site
 
 import (
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestInjectMetaEscapesTextAndAttributes(t *testing.T) {
@@ -50,10 +49,7 @@ func TestRouteMetaDefaults(t *testing.T) {
 }
 
 func TestSitemapExcludesNonPublicContent(t *testing.T) {
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	database, _ := dbtest.OpenPostgres(t)
 	defer database.Close()
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	seedSitemapProject(t, databasePath{db: database}, "live", "published", now.Add(-time.Hour))
@@ -91,13 +87,13 @@ type databasePath struct {
 
 func seedSitemapProject(t *testing.T, database databasePath, slug string, status string, publishedAt time.Time) {
 	t.Helper()
-	_, err := database.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, '', '', ?, 0, 10, ?, ?, ?)`,
+	_, err := database.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, '', '', $3, false, 10, $4, $5, $6)`,
 		slug,
 		slug,
 		status,
-		publishedAt.Format(time.RFC3339Nano),
-		publishedAt.Format(time.RFC3339Nano),
-		publishedAt.Format(time.RFC3339Nano),
+		publishedAt,
+		publishedAt,
+		publishedAt,
 	)
 	if err != nil {
 		t.Fatalf("seed project %s: %v", slug, err)

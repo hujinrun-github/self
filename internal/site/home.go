@@ -3,7 +3,10 @@ package site
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
+
+	"portfolio/internal/storage"
 )
 
 type HomeRepository struct {
@@ -70,7 +73,7 @@ func (r *HomeRepository) GetHome(ctx context.Context) (HomePayload, error) {
 }
 
 func (r *HomeRepository) homeExperiences(ctx context.Context) ([]ExperienceSummary, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, period, title, organization, description, sort_order FROM experiences WHERE status = 'published' AND published_at <= ? ORDER BY sort_order ASC, published_at DESC LIMIT 4`, r.now())
+	rows, err := r.db.QueryContext(ctx, `SELECT id, period, title, organization, description, sort_order FROM experiences WHERE status = 'published' AND published_at <= $1 ORDER BY sort_order ASC, published_at DESC LIMIT 4`, r.now())
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +90,10 @@ func (r *HomeRepository) homeExperiences(ctx context.Context) ([]ExperienceSumma
 }
 
 func (r *HomeRepository) homeContent(ctx context.Context, table string, summaryColumn string, limit int) ([]ContentSummary, error) {
-	query := `SELECT id, title, slug, ` + summaryColumn + `, featured, sort_order, published_at FROM ` + table + ` WHERE status = 'published' AND published_at <= ? ORDER BY featured DESC, published_at DESC, sort_order ASC LIMIT ?`
+	if summaryColumn != homeSummaryColumn(table) {
+		return nil, fmt.Errorf("unknown summary column %s for table %s", summaryColumn, table)
+	}
+	query := `SELECT id, title, slug, ` + summaryColumn + `, featured, sort_order, published_at FROM ` + table + ` WHERE status = 'published' AND published_at <= $1 ORDER BY featured DESC, published_at DESC, sort_order ASC LIMIT $2`
 	rows, err := r.db.QueryContext(ctx, query, r.now(), limit)
 	if err != nil {
 		return nil, err
@@ -96,16 +102,29 @@ func (r *HomeRepository) homeContent(ctx context.Context, table string, summaryC
 	items := []ContentSummary{}
 	for rows.Next() {
 		var item ContentSummary
-		var featured int
-		if err := rows.Scan(&item.ID, &item.Title, &item.Slug, &item.Summary, &featured, &item.SortOrder, &item.PublishedAt); err != nil {
+		var publishedAt time.Time
+		if err := rows.Scan(&item.ID, &item.Title, &item.Slug, &item.Summary, &item.Featured, &item.SortOrder, &publishedAt); err != nil {
 			return nil, err
 		}
-		item.Featured = featured == 1
+		item.PublishedAt = storage.NormalizeTime(publishedAt).Format(time.RFC3339Nano)
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
-func (r *HomeRepository) now() string {
-	return r.clock().UTC().Format(time.RFC3339Nano)
+func (r *HomeRepository) now() time.Time {
+	return storage.NormalizeTime(r.clock())
+}
+
+func homeSummaryColumn(table string) string {
+	switch table {
+	case "talks":
+		return "summary"
+	case "writings":
+		return "excerpt"
+	case "projects":
+		return "summary"
+	default:
+		return ""
+	}
 }
