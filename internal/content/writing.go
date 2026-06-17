@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"portfolio/internal/storage"
 )
 
 type WritingInput struct {
@@ -35,6 +37,22 @@ type Writing struct {
 }
 
 func (r *Repository) CreateWriting(ctx context.Context, input WritingInput) (Writing, error) {
+	if err := validateMarkdownMedia(input.ContentMD); err != nil {
+		return Writing{}, err
+	}
+	for attempt := 0; attempt < 10; attempt++ {
+		writing, err := r.createWritingAttempt(ctx, input)
+		if err == nil {
+			return writing, nil
+		}
+		if !storage.IsSQLState(err, storage.CodeUniqueViolation) {
+			return Writing{}, err
+		}
+	}
+	return Writing{}, ErrSlugConflict
+}
+
+func (r *Repository) createWritingAttempt(ctx context.Context, input WritingInput) (Writing, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Writing{}, err
@@ -45,12 +63,16 @@ func (r *Repository) CreateWriting(ctx context.Context, input WritingInput) (Wri
 	if err != nil {
 		return Writing{}, err
 	}
-	now := formatTime(r.clock())
+	now := normalizeTime(r.clock())
+	if err := lockContentOrder(ctx, tx, "writings"); err != nil {
+		return Writing{}, err
+	}
 	sortOrder, err := nextSortOrder(ctx, tx, "writings")
 	if err != nil {
 		return Writing{}, err
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO writings (title, slug, excerpt, content_md, cover_media_id, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO writings (title, slug, excerpt, content_md, cover_media_id, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
 		input.Title,
 		slug,
 		input.Excerpt,
@@ -60,16 +82,12 @@ func (r *Repository) CreateWriting(ctx context.Context, input WritingInput) (Wri
 		input.SEODescription,
 		input.OGImageMediaID,
 		StatusDraft,
-		boolInt(input.Featured),
+		input.Featured,
 		sortOrder,
-		timePtrString(input.PublishedAt),
+		normalizedTimePtr(input.PublishedAt),
 		now,
 		now,
-	)
-	if err != nil {
-		return Writing{}, err
-	}
-	id, err := result.LastInsertId()
+	).Scan(&id)
 	if err != nil {
 		return Writing{}, err
 	}
@@ -84,23 +102,18 @@ func (r *Repository) CreateWriting(ctx context.Context, input WritingInput) (Wri
 
 func (r *Repository) GetWriting(ctx context.Context, id int64) (Writing, error) {
 	var writing Writing
-	var publishedAt sql.NullString
-	var featured int
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, excerpt, content_md, status, featured, sort_order, published_at FROM writings WHERE id = ?`, id).
-		Scan(&writing.ID, &writing.Title, &writing.Slug, &writing.Excerpt, &writing.ContentMD, &writing.Status, &featured, &writing.SortOrder, &publishedAt)
+	var publishedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, excerpt, content_md, status, featured, sort_order, published_at FROM writings WHERE id = $1`, id).
+		Scan(&writing.ID, &writing.Title, &writing.Slug, &writing.Excerpt, &writing.ContentMD, &writing.Status, &writing.Featured, &writing.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Writing{}, ErrNotFound
 		}
 		return Writing{}, err
 	}
-	writing.Featured = featured == 1
 	if publishedAt.Valid {
-		parsed, err := parseTime(publishedAt.String)
-		if err != nil {
-			return Writing{}, err
-		}
-		writing.PublishedAt = &parsed
+		value := normalizeTime(publishedAt.Time)
+		writing.PublishedAt = &value
 	}
 	tags, err := r.writingTags(ctx, id)
 	if err != nil {

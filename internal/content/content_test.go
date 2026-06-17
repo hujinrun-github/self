@@ -120,3 +120,88 @@ func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
 		t.Fatalf("project techs = %+v", project.Techs)
 	}
 }
+
+func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
+	repo := newContentRepo(t)
+	errs := make(chan error, 2)
+	projects := make(chan Project, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			project, err := repo.CreateProject(t.Context(), ProjectInput{Title: "Same Title"})
+			if err != nil {
+				errs <- err
+				return
+			}
+			projects <- project
+			errs <- nil
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("CreateProject concurrent: %v", err)
+		}
+	}
+	first := <-projects
+	second := <-projects
+	if first.Slug == second.Slug {
+		t.Fatalf("duplicate slug: first=%+v second=%+v", first, second)
+	}
+	if first.SortOrder == second.SortOrder {
+		t.Fatalf("duplicate sort_order: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestHardDeleteDraftProjectClearsMediaReferences(t *testing.T) {
+	repo := newContentRepo(t)
+	mediaID := insertContentMediaAsset(t, repo)
+	project, err := repo.CreateProject(t.Context(), ProjectInput{
+		Title:        "Referenced Draft",
+		CoverMediaID: &mediaID,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if _, err := repo.db.ExecContext(t.Context(), `INSERT INTO media_references (media_asset_id, resource_type, resource_id, source, created_at) VALUES ($1, $2, $3, $4, now())`, mediaID, "project", project.ID, "cover"); err != nil {
+		t.Fatalf("insert media reference: %v", err)
+	}
+	if err := repo.DeleteProject(t.Context(), project.ID); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	var count int
+	if err := repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2`, "project", project.ID).Scan(&count); err != nil {
+		t.Fatalf("count media references: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("media reference count = %d, want 0", count)
+	}
+}
+
+func TestWritingRejectsRawUploadsMarkdownReference(t *testing.T) {
+	repo := newContentRepo(t)
+	_, err := repo.CreateWriting(t.Context(), WritingInput{
+		Title:     "Unsafe Markdown",
+		ContentMD: "![x](/uploads/a/b/card.jpg)",
+	})
+	if !errors.Is(err, ErrUnsafeMarkdownMedia) {
+		t.Fatalf("CreateWriting err = %v, want ErrUnsafeMarkdownMedia", err)
+	}
+}
+
+func insertContentMediaAsset(t *testing.T, repo *Repository) int64 {
+	t.Helper()
+	var id int64
+	err := repo.db.QueryRowContext(t.Context(), `INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now()) RETURNING id`,
+		"cover.png",
+		"content-test-cover-"+time.Now().Format("150405.000000000"),
+		"image/png",
+		10,
+		1,
+		1,
+		`{}`,
+		"content-test-checksum-"+time.Now().Format("150405.000000000"),
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert media asset: %v", err)
+	}
+	return id
+}

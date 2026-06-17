@@ -1,11 +1,10 @@
 package content
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestSlugifyNormalizesASCIIText(t *testing.T) {
@@ -72,10 +71,6 @@ func TestPublishedSlugIsImmutable(t *testing.T) {
 
 func newContentRepo(t *testing.T) *Repository {
 	t.Helper()
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
+	database, _ := dbtest.OpenPostgres(t)
 	return NewRepository(database)
 }

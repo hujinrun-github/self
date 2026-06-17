@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -11,8 +13,11 @@ func (r *Repository) setRoutableStatus(ctx context.Context, table string, id int
 	if !validStatus(status) {
 		return ErrInvalidStatus
 	}
-	var existing sql.NullString
-	query := `SELECT published_at FROM ` + table + ` WHERE id = ?`
+	if !contentTableAllowed(table) {
+		return fmt.Errorf("unknown status table %s", table)
+	}
+	var existing sql.NullTime
+	query := `SELECT published_at FROM ` + table + ` WHERE id = $1`
 	if err := r.db.QueryRowContext(ctx, query, id).Scan(&existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -21,16 +26,32 @@ func (r *Repository) setRoutableStatus(ctx context.Context, table string, id int
 	}
 	var nextPublishedAt any
 	if status == StatusPublished {
-		if existing.Valid && existing.String != "" {
-			nextPublishedAt = existing.String
+		if existing.Valid {
+			nextPublishedAt = normalizeTime(existing.Time)
 		} else if publishedAt != nil {
-			nextPublishedAt = formatTime(*publishedAt)
+			nextPublishedAt = normalizeTime(*publishedAt)
 		} else {
-			nextPublishedAt = formatTime(r.clock())
+			nextPublishedAt = normalizeTime(r.clock())
 		}
 	} else if existing.Valid {
-		nextPublishedAt = existing.String
+		nextPublishedAt = normalizeTime(existing.Time)
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE `+table+` SET status = ?, published_at = ?, updated_at = ? WHERE id = ?`, status, nextPublishedAt, formatTime(r.clock()), id)
+	_, err := r.db.ExecContext(ctx, `UPDATE `+table+` SET status = $1, published_at = $2, updated_at = $3 WHERE id = $4`, status, nextPublishedAt, normalizeTime(r.clock()), id)
 	return err
+}
+
+func contentTableAllowed(table string) bool {
+	switch table {
+	case "projects", "writings", "talks", "experiences":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateMarkdownMedia(content string) error {
+	if strings.Contains(content, "](/uploads/") || strings.Contains(content, `](/uploads\`) {
+		return ErrUnsafeMarkdownMedia
+	}
+	return nil
 }
