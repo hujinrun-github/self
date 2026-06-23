@@ -133,7 +133,7 @@ id
 <resource>_id
 locale
 translation_status
-source_updated_at
+source_version
 translated_at
 updated_at
 ```
@@ -142,11 +142,26 @@ Where:
 
 - `locale` is constrained to `en` or `ja`
 - `translation_status` is constrained to `ai_draft` or `reviewed`
-- `source_updated_at` records the Chinese source row timestamp the translation was based on
+- `source_version` records the Chinese source text version the translation was based on
 - `translated_at` records when AI generation last wrote the row
 - `updated_at` records the last manual or generated write to the translation row
 
 There is intentionally no `zh` translation row. Chinese stays in the source tables.
+
+Every translation table must also enforce one translation row per locale for one source row:
+
+```text
+UNIQUE (<resource>_id, locale)
+```
+
+Examples:
+
+- `UNIQUE (project_id, locale)`
+- `UNIQUE (writing_id, locale)`
+- `UNIQUE (talk_id, locale)`
+- `UNIQUE (experience_id, locale)`
+- `UNIQUE (profile_id, locale)`
+- `UNIQUE (social_link_id, locale)`
 
 ### Resource-Specific Translation Fields
 
@@ -248,6 +263,33 @@ There is intentionally no `zh` translation row. Chinese stays in the source tabl
 - `sort_order`
 - `published_at`
 
+### Source Text Versioning
+
+The current source-table `updated_at` fields cannot drive translation staleness because they already change for non-text events such as publish/archive transitions and shared-field updates.
+
+Each source table that owns translations must therefore gain a dedicated version field:
+
+```text
+translation_source_version BIGINT NOT NULL DEFAULT 1
+```
+
+This field is required on:
+
+- `profile`
+- `social_links`
+- `experiences`
+- `projects`
+- `writings`
+- `talks`
+
+Rules:
+
+- increment `translation_source_version` only when Chinese locale-owned text fields change
+- do not increment it for shared operational changes such as status, featured, media selection, publish time, or external links
+- write the current source row version into `translation.source_version` whenever a translation row is generated or manually saved
+
+This keeps staleness tied to source-text drift instead of general row churn.
+
 ### Uniqueness Rules
 
 Chinese source slugs remain unique in:
@@ -275,10 +317,10 @@ This guarantees `/en/projects/about-me` and `/ja/projects/jiko-shokai` can coexi
 Translations should not store a separate boolean `stale` column. Staleness is a derived property:
 
 ```text
-translation is stale when source.updated_at > translation.source_updated_at
+translation is stale when source.translation_source_version > translation.source_version
 ```
 
-This keeps the schema simple and avoids write amplification when Chinese source content changes.
+This keeps the schema simple and avoids false stale markers during publish, archive, featured, media, and other shared-field updates.
 
 ## Public URL Strategy
 
@@ -303,6 +345,17 @@ Legacy routes without locale prefixes should redirect to the Chinese version:
 - same pattern for `writing`, `talks`, `bio`, and `contact`
 
 The redirect is important both for user bookmarks and for preserving existing links while the multilingual rollout lands.
+
+Legacy redirect handling must be enabled in the same release as locale-prefixed routing. Redirect logic must explicitly exclude these reserved paths and prefixes:
+
+- `/admin`
+- `/api`
+- `/uploads`
+- `/assets`
+- `/favicon.svg`
+- `/icons.svg`
+- `/sitemap.xml`
+- `/robots.txt`
 
 ## Fallback Rules
 
@@ -352,6 +405,8 @@ This is the necessary tradeoff for keeping per-language slugs clean and stable.
 
 Profile, bio, contact, and homepage fixed copy may safely fall back because they do not depend on a locale-specific content slug.
 
+However, fallback renderability does not imply indexability. SEO behavior for fallback pages is defined separately below.
+
 ## Public API Design
 
 The internal API paths can remain under `/api/site/*`, but they must become locale-aware. To avoid tripling the backend route registry, locale should be passed as a validated query parameter from the frontend router.
@@ -378,6 +433,28 @@ Recommended response metadata for locale-aware endpoints:
 For list responses, this metadata can sit beside `items`. For detail responses, it can sit beside the content object.
 
 If a routable detail page is requested with a locale slug that does not exist for the locale, return `404` instead of silently serving another locale's slug content.
+
+Locale-routable detail APIs must also return alternate-locale routing data so the frontend switcher, SEO layer, and sitemap generator can all use one source of truth:
+
+```json
+{
+  "requested_locale": "en",
+  "resolved_locale": "en",
+  "item": {
+    "...": "..."
+  },
+  "alternates": [
+    { "locale": "zh", "slug": "zi-ji-jie-shao", "path": "/zh/projects/zi-ji-jie-shao", "reviewed": true },
+    { "locale": "en", "slug": "about-me", "path": "/en/projects/about-me", "reviewed": true }
+  ]
+}
+```
+
+Rules for `alternates`:
+
+- only include locales that have a real locale-specific translation row and public path
+- never synthesize alternates through text fallback
+- include `reviewed` so the UI and SEO layer can distinguish reviewed translations from draft-only states when needed
 
 ## Admin Workflow
 
@@ -461,6 +538,19 @@ Profile editing needs the same language-tab model:
 
 This allows a single public identity record to expose language-specific copy without duplicating operational profile data.
 
+### Social Link Persistence Prerequisite
+
+`social_link_translations` cannot be added on top of a delete-and-recreate social link save path because translation rows would either be deleted on every profile save or block saves through referential constraints.
+
+Before social link label translation lands, profile persistence must switch to a stable-ID save model:
+
+- existing social link rows are updated in place
+- new rows are inserted with new IDs
+- removed rows are explicitly deleted
+- sort order changes are applied through stable row IDs instead of row recreation
+
+Only after that change should `social_link_translations` use a normal foreign key to `social_links`.
+
 ## Admin API Design
 
 The admin API should grow explicit read, write, and generate endpoints for translations.
@@ -487,6 +577,7 @@ Admin detail payloads should return:
 - `translations.ja`
 - per-locale `translation_status`
 - per-locale `stale`
+- per-locale `source_version`
 
 Create endpoints should continue creating Chinese source records only. Translation rows are generated or saved later.
 
@@ -546,6 +637,7 @@ The prompt must explicitly require:
 - preserve inline links and code fences
 - do not invent media URLs
 - do not translate external URLs
+- return ASCII romanized slug candidates only
 - return structured JSON, not free-form prose
 
 ### Translation Output Fields
@@ -569,6 +661,15 @@ After receiving the response, backend must:
 - run slug normalization and uniqueness checks
 - reject malformed Markdown payloads only when they violate existing app rules
 - write the translation row in one transaction
+
+Localized slugs must follow the same backend slug rules as source slugs:
+
+- lowercase ASCII only after normalization
+- allowed characters are `a-z`, `0-9`, and `-`
+- maximum length is 80 characters
+- reserved words remain disallowed
+
+DeepSeek is asked to provide romanized ASCII slugs, but backend remains the final authority. If normalization empties the slug or collides after retry bounds, the generation request fails with a validation error and the editor must provide a manual slug.
 
 ### Generation Flow
 
@@ -594,7 +695,7 @@ Regeneration is explicit and destructive:
 - Chinese source is never touched
 - the admin must confirm regeneration before write
 - regeneration sets `translation_status` back to `ai_draft`
-- `source_updated_at` refreshes to the current Chinese `updated_at`
+- `source_version` refreshes to the current source row `translation_source_version`
 
 ## SEO and Sitemap Design
 
@@ -609,6 +710,28 @@ Each public locale page should render:
 
 For routable detail pages, only emit `hreflang` alternates for locales that actually have published translation rows and therefore real locale-specific URLs.
 
+The same `alternates` resolver used by detail APIs should drive:
+
+- detail-page language switchers
+- `hreflang` tags
+- sitemap entries for routable content
+
+### Fallback Page Indexing Policy
+
+For non-routable pages that are allowed to render through fallback, such as locale-specific profile/bio/contact views:
+
+- if `resolved_locale == requested_locale`, the page is indexable
+- if `resolved_locale != requested_locale`, the page is renderable for users but must be treated as a fallback page
+
+Fallback pages must:
+
+- emit `noindex,follow`
+- set canonical to the resolved locale path instead of the requested fallback path
+- omit the missing locale from `hreflang` output
+- stay out of sitemap output for that locale until a reviewed translation exists
+
+This prevents `/ja/bio` from being indexed as Japanese when it is actually rendering English or Chinese fallback content.
+
 ### Sitemap
 
 Sitemap generation should emit:
@@ -620,6 +743,8 @@ Sitemap generation should emit:
 - localized routable detail URLs only for locales that have published translation rows
 
 This avoids advertising locale pages that cannot actually be resolved by slug.
+
+For non-routable profile-driven locale pages, sitemap inclusion requires a reviewed locale translation. Renderable fallback pages are intentionally excluded until their own-locale content exists.
 
 ### Route Metadata
 
@@ -669,13 +794,13 @@ There is no data copy from Chinese source into a `zh` translation table because 
 
 Recommended rollout order:
 
-1. add locale-prefixed public routing and fixed-copy dictionaries
+1. add locale-prefixed public routing, fixed-copy dictionaries, and legacy redirects in one release
 2. add translation tables and locale-aware repository reads
 3. add admin detail editing for existing records
-4. add multilingual admin tabs and manual translation saves
-5. add DeepSeek generation endpoints
-6. add locale-aware SEO and sitemap behavior
-7. add legacy route redirects to `/zh/*`
+4. change profile social link persistence to stable-ID upsert/reorder semantics
+5. add multilingual admin tabs and manual translation saves
+6. add DeepSeek generation endpoints
+7. add locale-aware SEO and sitemap behavior
 
 This order keeps the system shippable at every stage and avoids blocking on AI integration before the core content model is ready.
 
@@ -684,14 +809,17 @@ This order keeps the system shippable at every stage and avoids blocking on AI i
 Required backend coverage:
 
 - translation table migrations and constraints
+- per-table `UNIQUE (<resource>_id, locale)` behavior
 - locale-aware slug uniqueness
 - Chinese source reads remain unchanged
 - locale read fallback behavior for profile and static-copy-backed content
 - routable detail pages return `404` when locale translation slug is missing
 - translated detail pages resolve correctly by locale slug
-- stale translation detection from `source_updated_at`
+- stale translation detection from `translation_source_version`
+- shared-field updates do not mark translations stale
 - DeepSeek-disabled runtime behavior when config is absent
 - translation generation validation and overwrite confirmation paths
+- social link translations survive profile edits because stable IDs are preserved
 
 Required frontend coverage:
 
@@ -712,11 +840,12 @@ Required admin coverage:
 ## Delivery Sequence
 
 1. Add locale routing and public fixed-copy dictionaries.
-2. Add translation tables and locale-aware repository helpers.
-3. Preserve Chinese source reads as the fallback backbone.
-4. Add admin detail routes for existing records across projects, writings, talks, and experiences.
-5. Split admin editors into shared fields plus locale tabs.
-6. Add translation save endpoints and per-locale status reporting.
-7. Add the DeepSeek translation service adapter and manual generation endpoints.
-8. Add locale-aware SEO, canonical, `hreflang`, and sitemap output.
-9. Add redirects from old non-locale public routes to `/zh/*`.
+2. Add legacy redirects together with locale routing, excluding `/admin`, `/api`, `/uploads`, `/assets`, `/favicon.svg`, `/icons.svg`, `/sitemap.xml`, and `/robots.txt`.
+3. Add translation tables, per-table uniqueness constraints, and locale-aware repository helpers.
+4. Preserve Chinese source reads as the fallback backbone and add `translation_source_version` to translatable source tables.
+5. Add admin detail routes for existing records across projects, writings, talks, and experiences.
+6. Change profile social link persistence to stable-ID upsert and reorder semantics.
+7. Split admin editors into shared fields plus locale tabs.
+8. Add translation save endpoints, detail `alternates`, and per-locale status reporting.
+9. Add the DeepSeek translation service adapter and manual generation endpoints.
+10. Add locale-aware SEO, canonical, `hreflang`, `noindex` fallback handling, and sitemap output.
