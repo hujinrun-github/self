@@ -1,0 +1,722 @@
+# Multilingual Site and AI Translation Design
+
+Date: 2026-06-24
+Status: Draft for review
+
+## Goal
+
+Add multilingual support for the public portfolio site with Chinese as the source language, English and Japanese as translation layers, locale-prefixed public URLs, and an admin workflow that can generate translation drafts through a provided DeepSeek API and then let an editor review or adjust them manually.
+
+This design covers architecture, data model, API shape, admin workflow, SEO behavior, and migration strategy only. It does not implement code changes.
+
+## Confirmed Decisions
+
+- Public language support is required for Chinese, English, and Japanese.
+- Public URLs use explicit locale prefixes: `/zh`, `/en`, `/ja`.
+- Chinese is the default and authoritative source content stored in the existing main tables.
+- English and Japanese are stored as translations instead of replacing the Chinese source fields.
+- Translation generation is manual, not automatic on every save.
+- Translation generation uses a provided DeepSeek API.
+- Slugs are localized per language instead of shared globally.
+- The admin experience manages one content record with three language views instead of three independent records.
+- Shared publishing state, sort order, media selection, and external links remain attached to the base content record.
+- Missing content should fall back toward Chinese where possible, but locale-specific routed detail pages must still preserve per-locale slug rules.
+
+## Current Project Constraints
+
+The current repository shape already suggests a clean multilingual evolution path:
+
+- Public routing is frontend-driven in [routes.tsx](D:/MyGitProject/self/web/src/app/routes.tsx) with direct `/projects`, `/writing`, `/talks`, `/bio`, and `/contact` routes.
+- Public fixed copy is hard-coded in React components such as [HomePage.tsx](D:/MyGitProject/self/web/src/features/public/HomePage.tsx), [PublicLayout.tsx](D:/MyGitProject/self/web/src/features/public/PublicLayout.tsx), and [PublicListPage.tsx](D:/MyGitProject/self/web/src/features/public/PublicListPage.tsx).
+- Public content data comes from domain-specific Go repositories under `internal/profile`, `internal/content`, and `internal/site`.
+- Existing database tables store a single language directly in the main row shape, for example `projects.title`, `projects.slug`, `writings.content_md`, and `profile.summary`.
+- The admin UI is currently strongest at create/list flows. A full multilingual feature requires stronger edit flows for existing content before translation generation becomes useful.
+
+The design below keeps the existing Go domain boundaries and extends them rather than replacing them with a generic CMS layer.
+
+## Non-Goals
+
+- Do not redesign the overall visual identity of the public site.
+- Do not translate the admin chrome itself in this stage. Admin controls can remain English while editing multilingual content.
+- Do not add more locales beyond `zh`, `en`, and `ja`.
+- Do not introduce background queues, workers, or webhook-based translation jobs in the first release.
+- Do not auto-regenerate translations every time Chinese content changes.
+- Do not make DeepSeek runtime configuration mandatory for boot. The app should still start when translation generation is not configured.
+- Do not add public taxonomy pages for tags or tech stacks in this stage.
+- Do not add machine-generated audio, speech, or automatic locale detection beyond a simple default redirect.
+
+## Recommended Architecture
+
+The backend remains a Go monolith with React as the public/admin frontend. Multilingual support is added through four layers:
+
+- Locale-aware public routing and fixed-copy dictionaries in the React app.
+- Locale-aware public read paths in the Go repositories and site services.
+- Translation tables beside the current Chinese source tables in PostgreSQL.
+- Admin translation endpoints plus a translation service wrapper around the DeepSeek API.
+
+Chinese remains the source of truth in the existing main tables. English and Japanese live in translation tables that reference the source rows. Shared publication state and media choices remain on the main rows so one project, article, talk, or profile can be published once while exposing language-specific copy where available.
+
+This keeps the current repository shapes understandable and avoids overloading each source table with large JSON translation blobs.
+
+## Locale Model
+
+Supported locales:
+
+- `zh`
+- `en`
+- `ja`
+
+Public locale behavior:
+
+- `/` redirects to `/zh`.
+- Unsupported locale prefixes redirect to `/zh`.
+- Public routes always carry a locale prefix.
+- The current locale becomes part of React route state, public API read behavior, SEO metadata, sitemap generation, and HTML `<html lang>` output.
+
+HTML language mapping:
+
+- `zh` -> `zh-CN`
+- `en` -> `en`
+- `ja` -> `ja`
+
+## Source and Translation Ownership
+
+Chinese is stored directly in the existing source tables and remains editable as the base version. English and Japanese are derived translations that can be:
+
+- missing
+- AI-generated but unreviewed
+- manually reviewed or manually authored
+
+The source version always wins for shared operational state:
+
+- publish status
+- featured flag
+- sort order
+- published timestamp
+- cover/avatar/OG media selections
+- external URLs such as demo, repo, and video URLs
+
+Translation versions own locale-specific text:
+
+- public titles
+- slugs
+- summaries and excerpts
+- long-form Markdown
+- public SEO title and description
+- any locale-facing labels that appear publicly
+
+## Data Model
+
+### Guiding Rule
+
+For every source record that currently stores public text in the main row, Chinese stays in place and non-Chinese text moves to a translation table.
+
+### Translation Tables
+
+Add these tables:
+
+- `profile_translations`
+- `social_link_translations`
+- `experience_translations`
+- `project_translations`
+- `writing_translations`
+- `talk_translations`
+
+`tag_translations` and `tech_translations` are explicitly deferred from this stage. Current public pages do not render tags or tech labels, so v1 keeps those taxonomy names shared. If the public UI later exposes localized tag or tech labels, add translation tables in a follow-up change instead of expanding the first delivery.
+
+### Common Translation Columns
+
+Every translation table should include these core fields:
+
+```text
+id
+<resource>_id
+locale
+translation_status
+source_updated_at
+translated_at
+updated_at
+```
+
+Where:
+
+- `locale` is constrained to `en` or `ja`
+- `translation_status` is constrained to `ai_draft` or `reviewed`
+- `source_updated_at` records the Chinese source row timestamp the translation was based on
+- `translated_at` records when AI generation last wrote the row
+- `updated_at` records the last manual or generated write to the translation row
+
+There is intentionally no `zh` translation row. Chinese stays in the source tables.
+
+### Resource-Specific Translation Fields
+
+`profile_translations`
+
+- `name`
+- `headline`
+- `summary`
+- `bio`
+- `seo_title`
+- `seo_description`
+
+`social_link_translations`
+
+- `label`
+
+`experience_translations`
+
+- `period`
+- `title`
+- `organization`
+- `description`
+
+`project_translations`
+
+- `title`
+- `slug`
+- `summary`
+- `content_md`
+- `seo_title`
+- `seo_description`
+
+`writing_translations`
+
+- `title`
+- `slug`
+- `excerpt`
+- `content_md`
+- `seo_title`
+- `seo_description`
+
+`talk_translations`
+
+- `title`
+- `slug`
+- `summary`
+- `event_name`
+- `seo_title`
+- `seo_description`
+
+### Shared Source Fields That Stay on Main Tables
+
+`profile`
+
+- `avatar_media_id`
+- `email`
+- `og_image_media_id`
+
+`social_links`
+
+- `url`
+- `icon`
+- `sort_order`
+
+`experiences`
+
+- `status`
+- `sort_order`
+- `published_at`
+
+`projects`
+
+- `cover_media_id`
+- `demo_url`
+- `repo_url`
+- `og_image_media_id`
+- `featured`
+- `status`
+- `sort_order`
+- `published_at`
+
+`writings`
+
+- `cover_media_id`
+- `og_image_media_id`
+- `featured`
+- `status`
+- `sort_order`
+- `published_at`
+
+`talks`
+
+- `cover_media_id`
+- `video_url`
+- `duration_minutes`
+- `og_image_media_id`
+- `featured`
+- `status`
+- `sort_order`
+- `published_at`
+
+### Uniqueness Rules
+
+Chinese source slugs remain unique in:
+
+- `projects.slug`
+- `writings.slug`
+- `talks.slug`
+
+Localized translation slugs must be unique per locale and resource table:
+
+```text
+UNIQUE (locale, slug)
+```
+
+for:
+
+- `project_translations`
+- `writing_translations`
+- `talk_translations`
+
+This guarantees `/en/projects/about-me` and `/ja/projects/jiko-shokai` can coexist independently.
+
+### Staleness Detection
+
+Translations should not store a separate boolean `stale` column. Staleness is a derived property:
+
+```text
+translation is stale when source.updated_at > translation.source_updated_at
+```
+
+This keeps the schema simple and avoids write amplification when Chinese source content changes.
+
+## Public URL Strategy
+
+Public routes become:
+
+- `/zh`
+- `/en`
+- `/ja`
+- `/:locale/bio`
+- `/:locale/contact`
+- `/:locale/projects`
+- `/:locale/projects/:slug`
+- `/:locale/writing`
+- `/:locale/writing/:slug`
+- `/:locale/talks`
+- `/:locale/talks/:slug`
+
+Legacy routes without locale prefixes should redirect to the Chinese version:
+
+- `/projects` -> `/zh/projects`
+- `/projects/:slug` -> `/zh/projects/:slug`
+- same pattern for `writing`, `talks`, `bio`, and `contact`
+
+The redirect is important both for user bookmarks and for preserving existing links while the multilingual rollout lands.
+
+## Fallback Rules
+
+### General Fallback Order
+
+When text fallback is allowed, the order is:
+
+1. requested locale
+2. English
+3. Chinese source
+
+Chinese is always the final fallback.
+
+### Where Fallback Is Allowed
+
+Fallback is allowed for:
+
+- homepage hero and fixed copy
+- profile and biography pages
+- contact page
+- experience summaries on the homepage
+- field-level fallback inside an already existing locale translation row
+
+### Where Fallback Is Not Allowed
+
+Fallback is not allowed to synthesize a missing locale-specific routed detail page when the route requires a locale-specific slug and that locale has no translation row.
+
+That means:
+
+- `/en/projects/:slug`
+- `/ja/writing/:slug`
+- `/en/talks/:slug`
+
+require a translation row for that locale because the localized slug itself is part of the public contract.
+
+### Consequence for Lists and Homepage Cards
+
+For routable collections with locale-specific slugs:
+
+- a locale list page only includes entries that have a translation row for that locale
+- the locale homepage card sections for projects, writing, and talks only include entries that have a translation row for that locale
+- untranslated entries remain visible in Chinese and become visible in English or Japanese only after a translation is generated or manually authored
+
+This is the necessary tradeoff for keeping per-language slugs clean and stable.
+
+### Consequence for Non-Routable Profile Content
+
+Profile, bio, contact, and homepage fixed copy may safely fall back because they do not depend on a locale-specific content slug.
+
+## Public API Design
+
+The internal API paths can remain under `/api/site/*`, but they must become locale-aware. To avoid tripling the backend route registry, locale should be passed as a validated query parameter from the frontend router.
+
+Examples:
+
+- `/api/site/home?locale=zh`
+- `/api/site/profile?locale=en`
+- `/api/site/projects?locale=ja`
+- `/api/site/projects/about-me?locale=en`
+
+If `locale` is omitted, backend defaults to `zh` for backward compatibility during rollout.
+
+Recommended response metadata for locale-aware endpoints:
+
+```json
+{
+  "requested_locale": "ja",
+  "resolved_locale": "en",
+  "fallback_from": "ja"
+}
+```
+
+For list responses, this metadata can sit beside `items`. For detail responses, it can sit beside the content object.
+
+If a routable detail page is requested with a locale slug that does not exist for the locale, return `404` instead of silently serving another locale's slug content.
+
+## Admin Workflow
+
+### Admin Editing Foundation
+
+Multilingual work depends on being able to edit existing content records, not just create and publish them.
+
+Before or alongside translation features, admin content workflows must support:
+
+- open an existing project, writing, talk, or experience record by ID
+- edit shared fields on an existing record
+- edit localized fields by language tab
+- save translations independently from publication status changes
+
+This is a prerequisite because the current UI emphasizes creation and listing more than full edit cycles.
+
+### Shared and Localized Editing Areas
+
+Each content editor should split into two sections:
+
+Shared fields:
+
+- publication state
+- featured flag
+- sort order if exposed
+- publish date
+- cover/avatar/OG media
+- demo/repo/video URLs
+- duration minutes
+
+Localized fields:
+
+- Chinese
+- English
+- Japanese
+
+Each localized tab should show:
+
+- title
+- slug
+- summary or excerpt
+- long body where applicable
+- SEO title
+- SEO description
+- other public text fields specific to the resource
+
+### Translation Controls
+
+English and Japanese tabs should provide:
+
+- `Generate translation`
+- `Regenerate translation`
+- `Mark reviewed`
+
+Behavior:
+
+- `Generate translation` is available when the Chinese source has been saved.
+- `Regenerate translation` asks for confirmation because it overwrites the target locale draft fields.
+- `Mark reviewed` changes `translation_status` from `ai_draft` to `reviewed`.
+- manual edits to a translated locale keep the row in `reviewed` once explicitly marked.
+
+### Translation Status Visibility
+
+Admin list views should surface per-locale status summaries for each row:
+
+- `ZH source`
+- `EN empty`
+- `EN ai_draft`
+- `EN reviewed`
+- `EN stale`
+- same for `JA`
+
+The list page does not need full translation editing, but it should show enough state to identify which entries still need translation work.
+
+### Profile Workflow
+
+Profile editing needs the same language-tab model:
+
+- shared: email, avatar, OG image, social link URLs/icons
+- localized: name, headline, summary, bio, SEO text, social link labels
+
+This allows a single public identity record to expose language-specific copy without duplicating operational profile data.
+
+## Admin API Design
+
+The admin API should grow explicit read, write, and generate endpoints for translations.
+
+Recommended patterns:
+
+- `GET /api/admin/profile`
+- `PUT /api/admin/profile`
+- `PUT /api/admin/profile/translations/{locale}`
+- `POST /api/admin/profile/translations/{locale}/generate`
+
+- `GET /api/admin/projects/{id}`
+- `PUT /api/admin/projects/{id}`
+- `PUT /api/admin/projects/{id}/translations/{locale}`
+- `POST /api/admin/projects/{id}/translations/{locale}/generate`
+
+- same shape for `writings`, `talks`, and `experiences`
+
+Admin detail payloads should return:
+
+- shared source fields
+- Chinese source fields
+- `translations.en`
+- `translations.ja`
+- per-locale `translation_status`
+- per-locale `stale`
+
+Create endpoints should continue creating Chinese source records only. Translation rows are generated or saved later.
+
+## DeepSeek Translation Integration
+
+### Service Boundary
+
+Add a dedicated translation service package, for example:
+
+```text
+internal/translation
+```
+
+This package owns:
+
+- runtime configuration
+- prompt construction
+- HTTP client behavior
+- response validation
+- provider-specific error mapping
+
+The rest of the app should not know DeepSeek request formats directly.
+
+### Runtime Configuration
+
+Recommended optional environment variables:
+
+```text
+TRANSLATION_PROVIDER=deepseek
+TRANSLATION_API_KEY
+TRANSLATION_BASE_URL
+TRANSLATION_MODEL
+TRANSLATION_TIMEOUT_SECONDS
+```
+
+These values are optional at startup. If they are missing:
+
+- the application still starts
+- translation generation endpoints return a controlled configuration error
+- the admin UI disables translation buttons or shows translation as unavailable
+
+### Translation Request Shape
+
+The service should send structured translation prompts that include:
+
+- resource type
+- source locale `zh`
+- target locale `en` or `ja`
+- resource-specific fields
+- style instructions
+- slug generation instructions
+- Markdown preservation instructions
+
+The prompt must explicitly require:
+
+- preserve Markdown headings and lists
+- preserve inline links and code fences
+- do not invent media URLs
+- do not translate external URLs
+- return structured JSON, not free-form prose
+
+### Translation Output Fields
+
+For each resource, the AI response should provide only the locale-owned fields. Example for a project:
+
+```json
+{
+  "title": "...",
+  "slug": "...",
+  "summary": "...",
+  "content_md": "...",
+  "seo_title": "...",
+  "seo_description": "..."
+}
+```
+
+After receiving the response, backend must:
+
+- validate required fields
+- run slug normalization and uniqueness checks
+- reject malformed Markdown payloads only when they violate existing app rules
+- write the translation row in one transaction
+
+### Generation Flow
+
+Generation should be synchronous in v1:
+
+1. admin saves Chinese source
+2. admin opens target locale tab
+3. admin clicks `Generate translation`
+4. backend loads current Chinese source
+5. backend calls DeepSeek
+6. backend validates and stores target locale row
+7. translation row becomes `ai_draft`
+8. admin reviews and optionally edits
+9. admin marks translation as `reviewed`
+
+This keeps the first version simple. If long writing bodies later make synchronous calls too slow, the adapter can move behind a job queue in a future stage.
+
+### Regeneration Rules
+
+Regeneration is explicit and destructive:
+
+- only the targeted locale row is overwritten
+- Chinese source is never touched
+- the admin must confirm regeneration before write
+- regeneration sets `translation_status` back to `ai_draft`
+- `source_updated_at` refreshes to the current Chinese `updated_at`
+
+## SEO and Sitemap Design
+
+### Canonical and hreflang
+
+Each public locale page should render:
+
+- locale-specific canonical URL
+- `hreflang="zh-CN"`
+- `hreflang="en"`
+- `hreflang="ja"`
+
+For routable detail pages, only emit `hreflang` alternates for locales that actually have published translation rows and therefore real locale-specific URLs.
+
+### Sitemap
+
+Sitemap generation should emit:
+
+- `/zh`
+- `/en`
+- `/ja`
+- localized static pages for all three locales
+- localized routable detail URLs only for locales that have published translation rows
+
+This avoids advertising locale pages that cannot actually be resolved by slug.
+
+### Route Metadata
+
+`site.RouteMeta` should become locale-aware:
+
+- fixed-copy titles per locale
+- locale-specific canonical path
+- locale-aware default description
+
+Localized content pages should prefer translated SEO fields, then English translation SEO, then Chinese source SEO according to the same fallback rules already chosen for each route type.
+
+## Frontend Routing and Copy
+
+React routing should move from direct root pages to a locale-grouped structure:
+
+- root redirect route
+- locale layout route
+- nested `bio`, `contact`, `projects`, `writing`, `talks`
+
+Frontend should gain:
+
+- a locale context or router-derived locale helper
+- public fixed-copy dictionaries for `zh`, `en`, and `ja`
+- a locale switcher in the public layout
+- locale-aware links that preserve the current locale prefix
+
+The public language switcher behavior should be:
+
+- on static pages, switch to the same page under the other locale
+- on detail pages, switch only to locales that have translation rows
+- if the current detail page lacks a corresponding target locale translation, disable that target instead of guessing a slug or redirecting to a different detail URL
+
+## Migration Strategy
+
+### Database Migration
+
+The schema migration should:
+
+1. create translation tables
+2. add foreign keys and uniqueness constraints
+3. leave existing Chinese source data untouched
+4. backfill no translation rows initially
+
+There is no data copy from Chinese source into a `zh` translation table because Chinese remains in the base tables by design.
+
+### Application Rollout
+
+Recommended rollout order:
+
+1. add locale-prefixed public routing and fixed-copy dictionaries
+2. add translation tables and locale-aware repository reads
+3. add admin detail editing for existing records
+4. add multilingual admin tabs and manual translation saves
+5. add DeepSeek generation endpoints
+6. add locale-aware SEO and sitemap behavior
+7. add legacy route redirects to `/zh/*`
+
+This order keeps the system shippable at every stage and avoids blocking on AI integration before the core content model is ready.
+
+## Testing Strategy
+
+Required backend coverage:
+
+- translation table migrations and constraints
+- locale-aware slug uniqueness
+- Chinese source reads remain unchanged
+- locale read fallback behavior for profile and static-copy-backed content
+- routable detail pages return `404` when locale translation slug is missing
+- translated detail pages resolve correctly by locale slug
+- stale translation detection from `source_updated_at`
+- DeepSeek-disabled runtime behavior when config is absent
+- translation generation validation and overwrite confirmation paths
+
+Required frontend coverage:
+
+- `/` redirects to `/zh`
+- locale switcher preserves correct paths
+- public links keep locale prefixes
+- locale dictionary copy renders correctly
+- list/detail views handle translated vs unavailable locale pages correctly
+
+Required admin coverage:
+
+- shared field editing remains stable
+- locale tab save behavior
+- translation status badges
+- generate and regenerate flows
+- stale indicator after Chinese source changes
+
+## Delivery Sequence
+
+1. Add locale routing and public fixed-copy dictionaries.
+2. Add translation tables and locale-aware repository helpers.
+3. Preserve Chinese source reads as the fallback backbone.
+4. Add admin detail routes for existing records across projects, writings, talks, and experiences.
+5. Split admin editors into shared fields plus locale tabs.
+6. Add translation save endpoints and per-locale status reporting.
+7. Add the DeepSeek translation service adapter and manual generation endpoints.
+8. Add locale-aware SEO, canonical, `hreflang`, and sitemap output.
+9. Add redirects from old non-locale public routes to `/zh/*`.
