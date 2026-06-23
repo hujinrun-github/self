@@ -87,6 +87,12 @@ Chinese is stored directly in the existing source tables and remains editable as
 - AI-generated but unreviewed
 - manually reviewed or manually authored
 
+Public visibility rules:
+
+- Chinese source content is public whenever the base record itself is public.
+- English and Japanese content are public only when a locale translation row exists with `translation_status = 'reviewed'`.
+- `ai_draft` translations are admin-only and preview-only. They must not appear in public list pages, public detail pages, `hreflang`, sitemap output, or locale switchers.
+
 The source version always wins for shared operational state:
 
 - publish status
@@ -389,15 +395,15 @@ That means:
 - `/ja/writing/:slug`
 - `/en/talks/:slug`
 
-require a translation row for that locale because the localized slug itself is part of the public contract.
+require a reviewed translation row for that locale because the localized slug itself is part of the public contract.
 
 ### Consequence for Lists and Homepage Cards
 
 For routable collections with locale-specific slugs:
 
-- a locale list page only includes entries that have a translation row for that locale
-- the locale homepage card sections for projects, writing, and talks only include entries that have a translation row for that locale
-- untranslated entries remain visible in Chinese and become visible in English or Japanese only after a translation is generated or manually authored
+- a locale list page only includes entries that have a reviewed translation row for that locale
+- the locale homepage card sections for projects, writing, and talks only include entries that have a reviewed translation row for that locale
+- untranslated entries remain visible in Chinese and become visible in English or Japanese only after a translation is reviewed
 
 This is the necessary tradeoff for keeping per-language slugs clean and stable.
 
@@ -410,6 +416,22 @@ However, fallback renderability does not imply indexability. SEO behavior for fa
 ## Public API Design
 
 The internal API paths can remain under `/api/site/*`, but they must become locale-aware. To avoid tripling the backend route registry, locale should be passed as a validated query parameter from the frontend router.
+
+HTTP resource path naming must preserve the current project's existing singular/plural mix:
+
+- `/api/site/projects`
+- `/api/site/talks`
+- `/api/site/writing`
+- `/api/site/profile`
+- `/api/site/home`
+
+The same rule applies to admin paths:
+
+- `/api/admin/projects`
+- `/api/admin/talks`
+- `/api/admin/writing`
+- `/api/admin/experience`
+- `/api/admin/profile`
 
 Examples:
 
@@ -444,16 +466,18 @@ Locale-routable detail APIs must also return alternate-locale routing data so th
     "...": "..."
   },
   "alternates": [
-    { "locale": "zh", "slug": "zi-ji-jie-shao", "path": "/zh/projects/zi-ji-jie-shao", "reviewed": true },
-    { "locale": "en", "slug": "about-me", "path": "/en/projects/about-me", "reviewed": true }
+    { "locale": "zh", "kind": "source", "slug": "zi-ji-jie-shao", "path": "/zh/projects/zi-ji-jie-shao", "reviewed": true },
+    { "locale": "en", "kind": "translation", "slug": "about-me", "path": "/en/projects/about-me", "reviewed": true }
   ]
 }
 ```
 
 Rules for `alternates`:
 
-- only include locales that have a real locale-specific translation row and public path
+- `zh` alternate comes from the source row, not from a translation table row
+- `en` and `ja` alternates come only from reviewed translation rows
 - never synthesize alternates through text fallback
+- include `kind: "source" | "translation"` so callers can distinguish source-backed and translation-backed alternates
 - include `reviewed` so the UI and SEO layer can distinguish reviewed translations from draft-only states when needed
 
 ## Admin Workflow
@@ -567,7 +591,7 @@ Recommended patterns:
 - `PUT /api/admin/projects/{id}/translations/{locale}`
 - `POST /api/admin/projects/{id}/translations/{locale}/generate`
 
-- same shape for `writings`, `talks`, and `experiences`
+- same shape for `writing`, `talks`, and `experience`
 
 Admin detail payloads should return:
 
@@ -578,8 +602,15 @@ Admin detail payloads should return:
 - per-locale `translation_status`
 - per-locale `stale`
 - per-locale `source_version`
+- per-locale `etag`
 
 Create endpoints should continue creating Chinese source records only. Translation rows are generated or saved later.
+
+All translation save endpoints must use optimistic concurrency. The recommended shape matches the existing profile save pattern:
+
+- admin detail reads return locale-specific ETags
+- `PUT /translations/{locale}` requires `If-Match`
+- stale `If-Match` values return `409 conflict`
 
 ## DeepSeek Translation Integration
 
@@ -671,6 +702,18 @@ Localized slugs must follow the same backend slug rules as source slugs:
 
 DeepSeek is asked to provide romanized ASCII slugs, but backend remains the final authority. If normalization empties the slug or collides after retry bounds, the generation request fails with a validation error and the editor must provide a manual slug.
 
+### Translation Slug Stability
+
+Translation slugs are editable only while the locale row is still an `ai_draft`.
+
+Once a locale translation is marked `reviewed` and therefore becomes publicly routable:
+
+- its slug becomes immutable in v1
+- changing the slug requires explicitly moving the locale row back to `ai_draft`
+- while the locale row is back in `ai_draft`, that locale disappears from public routing, sitemap, `hreflang`, and language switchers until it is reviewed again
+
+Slug aliases or redirect history for translated detail pages are intentionally out of scope for v1.
+
 ### Generation Flow
 
 Generation should be synchronous in v1:
@@ -686,6 +729,22 @@ Generation should be synchronous in v1:
 9. admin marks translation as `reviewed`
 
 This keeps the first version simple. If long writing bodies later make synchronous calls too slow, the adapter can move behind a job queue in a future stage.
+
+### Generation Concurrency Protection
+
+Translation generation must not overwrite newer manual edits made while the DeepSeek request is in flight.
+
+Recommended generation algorithm:
+
+1. read the source row `translation_source_version`
+2. read the target locale translation row `etag` and `updated_at`, if it exists
+3. call DeepSeek
+4. before writing, re-read the target locale row and compare its ETag
+5. if the locale row changed during generation, abort the write with `409 conflict`
+6. if the source row `translation_source_version` changed during generation, abort the write with `409 conflict`
+7. only write the generated translation if both checks still match the generation start snapshot
+
+This keeps manual edits and newly updated Chinese source content from being silently overwritten by stale AI results.
 
 ### Regeneration Rules
 
@@ -708,7 +767,7 @@ Each public locale page should render:
 - `hreflang="en"`
 - `hreflang="ja"`
 
-For routable detail pages, only emit `hreflang` alternates for locales that actually have published translation rows and therefore real locale-specific URLs.
+For routable detail pages, only emit `hreflang` alternates for locales that actually have reviewed translation rows and therefore real locale-specific URLs.
 
 The same `alternates` resolver used by detail APIs should drive:
 
@@ -736,15 +795,21 @@ This prevents `/ja/bio` from being indexed as Japanese when it is actually rende
 
 Sitemap generation should emit:
 
-- `/zh`
-- `/en`
-- `/ja`
-- localized static pages for all three locales
-- localized routable detail URLs only for locales that have published translation rows
+- `/zh` routes that are public from source content
+- `/en` and `/ja` non-routable pages only when their locale content resolves to reviewed same-locale content
+- localized collection list pages only when that locale has at least one reviewed routable item
+- localized routable detail URLs only for locales that have reviewed translation rows
 
 This avoids advertising locale pages that cannot actually be resolved by slug.
 
-For non-routable profile-driven locale pages, sitemap inclusion requires a reviewed locale translation. Renderable fallback pages are intentionally excluded until their own-locale content exists.
+Indexing rules by page class:
+
+- source Chinese pages are indexable whenever the underlying source record is public
+- English and Japanese profile-driven pages such as home, bio, and contact are indexable only when profile-backed locale content is reviewed and `resolved_locale == requested_locale`
+- English and Japanese collection list pages are indexable only when the list contains at least one reviewed locale item
+- English and Japanese detail pages are indexable only when the detail route resolves through a reviewed locale translation row
+
+Renderable fallback pages are intentionally excluded from sitemap until their own-locale content exists.
 
 ### Route Metadata
 
@@ -774,7 +839,7 @@ Frontend should gain:
 The public language switcher behavior should be:
 
 - on static pages, switch to the same page under the other locale
-- on detail pages, switch only to locales that have translation rows
+- on detail pages, switch only to locales that have reviewed alternates
 - if the current detail page lacks a corresponding target locale translation, disable that target instead of guessing a slug or redirecting to a different detail URL
 
 ## Migration Strategy
@@ -799,8 +864,8 @@ Recommended rollout order:
 3. add admin detail editing for existing records
 4. change profile social link persistence to stable-ID upsert/reorder semantics
 5. add multilingual admin tabs and manual translation saves
-6. add DeepSeek generation endpoints
-7. add locale-aware SEO and sitemap behavior
+6. add DeepSeek generation endpoints plus generation concurrency checks
+7. add locale-aware SEO and sitemap behavior that only exposes reviewed locale content
 
 This order keeps the system shippable at every stage and avoids blocking on AI integration before the core content model is ready.
 
@@ -819,7 +884,9 @@ Required backend coverage:
 - shared-field updates do not mark translations stale
 - DeepSeek-disabled runtime behavior when config is absent
 - translation generation validation and overwrite confirmation paths
+- translation generation aborts on source-version or locale-row concurrency conflicts
 - social link translations survive profile edits because stable IDs are preserved
+- `ai_draft` translations are excluded from public reads, switchers, `hreflang`, and sitemap output
 
 Required frontend coverage:
 
@@ -847,5 +914,5 @@ Required admin coverage:
 6. Change profile social link persistence to stable-ID upsert and reorder semantics.
 7. Split admin editors into shared fields plus locale tabs.
 8. Add translation save endpoints, detail `alternates`, and per-locale status reporting.
-9. Add the DeepSeek translation service adapter and manual generation endpoints.
-10. Add locale-aware SEO, canonical, `hreflang`, `noindex` fallback handling, and sitemap output.
+9. Add the DeepSeek translation service adapter, manual generation endpoints, and generation concurrency guards.
+10. Add locale-aware SEO, canonical, `hreflang`, `noindex` fallback handling, and sitemap output that only exposes reviewed locale content.
