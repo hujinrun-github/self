@@ -24,6 +24,8 @@ Only referenced local media files are expanded into object storage. Local images
 - Media categories in scope are images, video, and audio.
 - The article itself remains stored exactly as the current writing feature stores it.
 - The admin flow must be preview-first: parse and inspect the result before any writing row is committed.
+- `cover` is supported as an optional front matter key. It maps to `cover_media_id` only when it resolves to a successfully prepared imported image asset.
+- The importer does not auto-promote the first Markdown image to cover in v1. Cover assignment must be explicit to avoid surprising overwrites.
 
 ## Current Context
 
@@ -55,10 +57,12 @@ The first version does not include:
 
 ### Entry Points
 
+UI copy for this workflow should stay Chinese-first in the product, but this spec records each label with an English identifier to avoid ambiguity in implementation and review.
+
 The import feature should be visible in two places:
 
-1. On `/admin/writing` list page as a new primary action: `导入 Markdown`.
-2. On `/admin/writing/:id` draft edit page as a contextual action: `导入本地 Markdown`.
+1. On `/admin/writing` list page as a new primary action labeled `Import Markdown` (`导入 Markdown`).
+2. On `/admin/writing/:id` draft edit page as a contextual action labeled `Import Local Markdown` (`导入本地 Markdown`).
 
 The list-page entry is optimized for creating a new writing from a local file.
 
@@ -70,17 +74,17 @@ Published and archived writings must not expose the overwrite flow. Only drafts 
 
 The import UI should be a two-step modal or drawer workflow, not a direct file input inside the existing form.
 
-Step 1: `选择文件`
+Step 1: `Choose Files` (`选择文件`)
 
 - Select one `.md` file.
 - Optionally drag in or pick local media files that live beside the Markdown file or in its subdirectories.
 - Show the intended mode:
-  - `新建写作`
-  - `覆盖当前草稿`
-- If the entry point is the draft edit page, `覆盖当前草稿` is preselected and the target draft is shown read-only.
-- If the entry point is the writing list page, default to `新建写作`.
+  - `Create Writing` (`新建写作`)
+  - `Overwrite Draft` (`覆盖当前草稿`)
+- If the entry point is the draft edit page, `Overwrite Draft` is preselected and the target draft is shown read-only.
+- If the entry point is the writing list page, default to `Create Writing`.
 
-Step 2: `导入预览`
+Step 2: `Import Preview` (`导入预览`)
 
 The preview is split into two regions.
 
@@ -90,6 +94,7 @@ Left side:
 - parsed excerpt
 - parsed tags
 - parsed slug
+- parsed cover mapping
 - parsed SEO fields
 - import mode
 - media import summary
@@ -104,9 +109,9 @@ Right side:
 
 Footer actions:
 
-- `返回修改`
-- `新建写作并导入`
-- `覆盖当前草稿`
+- `Back` (`返回修改`)
+- `Create And Import` (`新建写作并导入`)
+- `Overwrite Draft` (`覆盖当前草稿`)
 
 The confirm button label changes with the selected mode.
 
@@ -146,6 +151,7 @@ Warnings that still allow commit:
 - unsupported front matter keys were ignored
 - front matter was missing and only body content was imported
 - slug was auto-generated because the file did not provide one
+- overwrite will mark existing translated writing variants as stale after commit
 
 Blocking errors:
 
@@ -171,6 +177,7 @@ Supported front matter keys in v1:
 - `excerpt`
 - `tags`
 - `slug`
+- `cover`
 - `seo_title`
 - `seo_description`
 
@@ -184,6 +191,7 @@ tags:
   - AI
   - Notes
 slug: example-post
+cover: ./images/cover.png
 seo_title: Example SEO Title
 seo_description: Example SEO Description
 ---
@@ -197,6 +205,8 @@ tags: AI, Notes, Engineering
 ```
 
 Unsupported keys are ignored but surfaced back in the preview warnings.
+
+`cover` is interpreted as a local relative image path only. If it resolves successfully during preview, the importer sets `cover_media_id` in the parsed payload. If it is missing, invalid, or points to a non-image asset, commit is blocked until the issue is fixed or the cover mapping is cleared in preview.
 
 ### Body Rules
 
@@ -231,7 +241,9 @@ Rules:
 - normalized path must stay inside that directory root
 - `../` traversal outside the root is rejected
 - duplicate references to the same normalized file path should map to one imported media asset inside the same import session
-- path matching is case-insensitive on Windows and case-sensitive on MinIO object keys
+- path matching is normalized to forward-slash form and then compared case-sensitively on every platform
+
+This intentionally prefers deterministic Linux-style behavior over platform-specific case folding. If the Markdown says `./Images/Cover.png` and the uploaded file is `./images/cover.png`, preview should surface an explicit unresolved-media error instead of guessing.
 
 ## Media Library And MinIO Design
 
@@ -322,6 +334,23 @@ New columns:
 
 Keep `storage_key` as the stable blob identifier.
 
+Existing schema constraints need a compatibility migration before audio or video assets can be stored. The current table requires `width` and `height` to be non-null positive integers, which is only valid for images.
+
+Schema rule after migration:
+
+- image assets must have `width` and `height`
+- audio and video assets must store `NULL` for `width` and `height`
+
+Recommended constraint shape:
+
+```sql
+CHECK (
+  (media_kind = 'image' AND width IS NOT NULL AND width > 0 AND height IS NOT NULL AND height > 0)
+  OR
+  (media_kind IN ('audio', 'video') AND width IS NULL AND height IS NULL)
+)
+```
+
 Keep `variants JSONB`, but allow mixed payloads during the transition:
 
 - local assets may keep `path`-oriented entries
@@ -408,6 +437,49 @@ Extend it so Markdown links with `href=media://asset/{id}/{variant}` are also re
 
 Public pages do not need embedded media players in v1. A standard link is acceptable for imported audio and video references.
 
+## Schema Migration
+
+Add a dedicated migration file:
+
+```text
+internal/db/migrations/003_writing_import.sql
+```
+
+The migration should:
+
+1. alter `media_assets`
+2. create `writing_import_sessions`
+3. create `writing_import_session_assets`
+4. add indexes needed for cleanup and lookup
+
+Minimum `media_assets` migration actions:
+
+```sql
+ALTER TABLE media_assets
+  ADD COLUMN storage_backend TEXT NOT NULL DEFAULT 'local' CHECK (storage_backend IN ('local', 'minio')),
+  ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_state IN ('active', 'pending_import')),
+  ADD COLUMN media_kind TEXT NOT NULL DEFAULT 'image' CHECK (media_kind IN ('image', 'video', 'audio'));
+
+ALTER TABLE media_assets
+  ALTER COLUMN width DROP NOT NULL,
+  ALTER COLUMN height DROP NOT NULL;
+```
+
+The migration must then replace the old unconditional `width > 0` and `height > 0` checks with the conditional image-only rule above.
+
+`writing_import_sessions` should index:
+
+- `token_hash`
+- `expires_at`
+- `status`
+- `admin_session_id`
+
+`writing_import_session_assets` should index:
+
+- `session_id`
+- `media_asset_id`
+- `status`
+
 ## Import Session Design
 
 The feature needs explicit session state because preview and commit are separate operations.
@@ -425,6 +497,7 @@ Fields:
 
 - `id`
 - `token_hash`
+- `admin_session_id`
 - `mode`
 - `target_writing_id`
 - `target_writing_etag`
@@ -479,7 +552,14 @@ The session tables own preview-stage imported media before the writing row is co
 
 Import sessions expire after 2 hours by default.
 
-Expired sessions must be cleaned by a background job or startup cleanup path that:
+The cleanup mechanism should be explicit:
+
+- run one startup cleanup pass so abandoned sessions from a previous process do not survive a restart
+- run an in-process periodic sweeper every 15 minutes while the single Go instance is alive
+
+This project already assumes a single running Go instance for admin writes, so an in-process sweeper is acceptable in v1 and avoids waiting for a restart before stale preview assets are reclaimed.
+
+Expired sessions must be cleaned by the sweeper and startup cleanup path:
 
 - deletes pending MinIO objects for uncommitted session assets
 - deletes `media_assets` rows still marked `pending_import`
@@ -517,6 +597,16 @@ Behavior:
 - `target_id` is required only for `overwrite`
 - if overwrite mode is selected, target writing must exist and be `draft`
 - target writing `ETag` or version snapshot is captured into the session at preview time
+- if the target draft already has locale translations, preview returns a warning that commit will increment `translation_source_version` and make those translations stale
+
+Token rules:
+
+- generate a 256-bit random token with `crypto/rand`
+- return the opaque token to the frontend once
+- store only `sha256(token)` as `token_hash`
+- bind the session row to the current authenticated admin session via `admin_session_id`
+- require normal admin auth middleware on preview, recovery, and commit
+- require normal CSRF protection on commit because it is a write endpoint
 
 Preview response shape:
 
@@ -530,6 +620,7 @@ Preview response shape:
     "excerpt": "Example excerpt",
     "tags": ["AI", "Notes"],
     "slug": "example-title",
+    "cover_media_id": 201,
     "seo_title": "",
     "seo_description": "",
     "content_md": "![cover](media://asset/201/content)"
@@ -552,6 +643,19 @@ Preview response shape:
 }
 ```
 
+### `GET /api/admin/writing/imports/preview/{token}`
+
+Purpose:
+
+- restore an existing preview after refresh or accidental navigation
+
+Rules:
+
+- same admin session ownership check as commit
+- returns `404` if the token is unknown or not owned by the current session
+- returns `410` if the preview session is expired
+- requires only normal authenticated admin GET semantics, not CSRF
+
 ### `POST /api/admin/writing/imports/commit`
 
 Purpose:
@@ -572,6 +676,7 @@ Request body:
     "title": "Edited title",
     "excerpt": "Edited excerpt",
     "slug": "edited-title",
+    "cover_media_id": 201,
     "seo_title": "",
     "seo_description": "",
     "content_md": "![cover](media://asset/201/content)",
@@ -579,6 +684,17 @@ Request body:
   }
 }
 ```
+
+Payload mapping to the existing save path is direct:
+
+- `payload.title` -> `WritingInput.Title`
+- `payload.excerpt` -> `WritingInput.Excerpt`
+- `payload.slug` -> `WritingInput.Slug`
+- `payload.cover_media_id` -> `WritingInput.CoverMediaID`
+- `payload.seo_title` -> `WritingInput.SEOTitle`
+- `payload.seo_description` -> `WritingInput.SEODescription`
+- `payload.content_md` -> `WritingInput.ContentMD`
+- `payload.tags` -> `WritingInput.Tags`
 
 Commit response shape:
 
@@ -640,6 +756,8 @@ The media service must grow in these ways:
 - support `active` and `pending_import` lifecycle states
 - expose an internal prepare/activate/cleanup workflow for import sessions
 
+Validation paths must split by `media_kind` instead of forcing every asset through the current image upload path.
+
 Suggested internal service shape:
 
 - `PrepareImportAsset(...)`
@@ -647,6 +765,29 @@ Suggested internal service shape:
 - `CleanupPreparedAsset(...)`
 
 `Upload(...)` for the existing media page can remain, but the new writing import flow should not fake itself through the existing generic single-file upload endpoint.
+
+Validation rules by kind:
+
+- image:
+  - use the existing image sniff + decode path
+  - keep current dimension and megapixel checks
+  - generate image variants
+- video:
+  - validate by extension plus sniffed MIME type
+  - do not call `image.Decode`
+  - do not generate image variants
+  - store one `original` variant entry only
+- audio:
+  - validate by extension plus sniffed MIME type
+  - do not call `image.Decode`
+  - do not generate image variants
+  - store one `original` variant entry only
+
+Expected MIME families:
+
+- image: `image/png`, `image/jpeg`, `image/webp`
+- video: `video/mp4`, `video/webm`, `video/quicktime`
+- audio: `audio/mpeg`, `audio/mp4`, `audio/wav`, `audio/wave`, `audio/ogg`
 
 ## Write-Path Consistency
 
@@ -665,6 +806,8 @@ During preview:
 
 Prepared assets must not appear in the normal `/api/admin/media` list until activated.
 
+`created_at` for prepared media rows is set during preview creation. Commit only flips `lifecycle_state` from `pending_import` to `active`; it does not rewrite `created_at`.
+
 ### Commit Phase
 
 During commit:
@@ -677,6 +820,8 @@ During commit:
 6. activate all pending media assets for the session
 7. rebuild `media_references`
 8. mark session committed
+
+For overwrite mode, the commit path intentionally reuses the existing `UpdateWriting` behavior. If `title`, `slug`, `excerpt`, `content_md`, `seo_title`, or `seo_description` changed, `translation_source_version` increments and any existing writing translations become stale. This is expected behavior and must already have been disclosed in preview warnings.
 
 Writing save and media activation should happen within one coordinated transaction boundary as far as database state is concerned.
 
@@ -754,6 +899,13 @@ The Markdown validation layer needs a narrow extension:
 - allow internal `media://asset/{id}/{variant}` links for image, audio, and video references
 
 Do not broaden the write path to allow arbitrary vendor URLs from MinIO or elsewhere.
+
+When the writing save rebuilds `media_references`, imported article assets continue to use:
+
+- `resource_type = 'writing'`
+- `source = 'markdown'`
+
+No new `media_references.source` enum is required for this feature.
 
 ## Admin Media Library Changes
 
