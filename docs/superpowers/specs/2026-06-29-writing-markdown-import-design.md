@@ -1,0 +1,880 @@
+# Writing Markdown Import Design
+
+Date: 2026-06-29
+Status: Draft for review
+
+## Goal
+
+Add a Markdown import workflow for the admin writing area so an administrator can import a local `.md` file into the existing `writings` content model, preview the parsed result, and then either create a new writing entry or overwrite an existing draft.
+
+The imported article must keep the current storage model:
+
+- article metadata stays in `writings`
+- article body stays in `writings.content_md`
+- localized writing flows continue to work on top of the saved Chinese source row
+
+Only referenced local media files are expanded into object storage. Local images, audio, and video discovered during import are added to the media library in MinIO-backed storage, and the Markdown body is rewritten to use system-managed media references instead of raw local file paths.
+
+## Confirmed Decisions
+
+- Support both `create new writing from import` and `overwrite current draft`.
+- Support optional YAML front matter. If a file has front matter, parse supported fields. If it does not, import body only.
+- Import local media files referenced by the Markdown instead of blocking the import.
+- Imported media should enter the media library, not a writing-specific private storage area.
+- Media categories in scope are images, video, and audio.
+- The article itself remains stored exactly as the current writing feature stores it.
+- The admin flow must be preview-first: parse and inspect the result before any writing row is committed.
+
+## Current Context
+
+The existing system already has these relevant boundaries:
+
+- Writing create and update are handled by the current admin routes under `/api/admin/writing` with `WritingInput`.
+- Writing body content is stored as raw Markdown in `writings.content_md`.
+- Markdown currently rejects unsafe direct upload paths and remote images through `validateMarkdownMedia`.
+- The media service already has a clean responsibility boundary around metadata, variants, and `storage_key`.
+- Previous storage design work explicitly called out a future `BlobStore` boundary for MinIO without requiring the whole app to migrate at once.
+
+This feature should build on those boundaries instead of replacing them.
+
+## Non-Goals
+
+The first version does not include:
+
+- bulk import of multiple Markdown articles in one action
+- full repository import from a folder or zip archive
+- automatic import of PDFs, DOCX, or HTML
+- AI cleanup or summarization of imported content
+- video transcoding, audio transcoding, waveform generation, or poster extraction
+- inline audio or video player rendering on public pages
+- full migration of all existing media assets from local filesystem storage to MinIO
+- changing the public writing page structure
+- changing the multilingual translation workflow
+
+## User Experience
+
+### Entry Points
+
+The import feature should be visible in two places:
+
+1. On `/admin/writing` list page as a new primary action: `导入 Markdown`.
+2. On `/admin/writing/:id` draft edit page as a contextual action: `导入本地 Markdown`.
+
+The list-page entry is optimized for creating a new writing from a local file.
+
+The draft edit-page entry is optimized for replacing the current draft body and metadata with imported content while keeping the draft identity, translation rows, and admin route intact.
+
+Published and archived writings must not expose the overwrite flow. Only drafts may be overwritten.
+
+### Import Surface
+
+The import UI should be a two-step modal or drawer workflow, not a direct file input inside the existing form.
+
+Step 1: `选择文件`
+
+- Select one `.md` file.
+- Optionally drag in or pick local media files that live beside the Markdown file or in its subdirectories.
+- Show the intended mode:
+  - `新建写作`
+  - `覆盖当前草稿`
+- If the entry point is the draft edit page, `覆盖当前草稿` is preselected and the target draft is shown read-only.
+- If the entry point is the writing list page, default to `新建写作`.
+
+Step 2: `导入预览`
+
+The preview is split into two regions.
+
+Left side:
+
+- parsed title
+- parsed excerpt
+- parsed tags
+- parsed slug
+- parsed SEO fields
+- import mode
+- media import summary
+- unresolved warnings
+
+Right side:
+
+- original Markdown summary
+- rewritten Markdown preview
+- rendered content preview
+- media replacement list showing original relative path and final system-managed media reference
+
+Footer actions:
+
+- `返回修改`
+- `新建写作并导入`
+- `覆盖当前草稿`
+
+The confirm button label changes with the selected mode.
+
+### Editing Rules During Preview
+
+The preview step is not read-only. It should allow editing the final fields before commit:
+
+- title
+- excerpt
+- tags
+- slug
+- SEO title
+- SEO description
+- final body Markdown
+
+This matters because imported files may have incomplete front matter, duplicate slugs, or titles that need a quick correction before save.
+
+The raw source file is not changed. Only the preview draft state is editable.
+
+### Media Presentation In Preview
+
+Each detected local media file should show:
+
+- original relative path from the Markdown
+- matched uploaded file name
+- detected media type: image, video, or audio
+- validation result
+- resulting system media reference
+- resulting public delivery type
+
+When an asset fails validation, the preview must keep the item visible with a clear blocking reason instead of silently skipping it.
+
+### Empty, Warning, and Blocking States
+
+Warnings that still allow commit:
+
+- unsupported front matter keys were ignored
+- front matter was missing and only body content was imported
+- slug was auto-generated because the file did not provide one
+
+Blocking errors:
+
+- Markdown file is missing or invalid
+- referenced local media path was not supplied
+- a referenced local media path escapes the Markdown directory via `../`
+- referenced media file type is unsupported
+- target draft is no longer a draft
+- overwrite target changed after preview generation
+- any media upload or pending asset activation failed
+
+If blocking errors exist, the commit button remains disabled.
+
+## Markdown Parsing Rules
+
+### Accepted File Shape
+
+The import workflow accepts one UTF-8 `.md` file per session.
+
+Supported front matter keys in v1:
+
+- `title`
+- `excerpt`
+- `tags`
+- `slug`
+- `seo_title`
+- `seo_description`
+
+Front matter examples that should parse:
+
+```yaml
+---
+title: Example
+excerpt: Short summary
+tags:
+  - AI
+  - Notes
+slug: example-post
+seo_title: Example SEO Title
+seo_description: Example SEO Description
+---
+```
+
+```yaml
+---
+title: Example
+tags: AI, Notes, Engineering
+---
+```
+
+Unsupported keys are ignored but surfaced back in the preview warnings.
+
+### Body Rules
+
+- If front matter exists, the remaining document body becomes `content_md`.
+- If front matter does not exist, the full file becomes `content_md`.
+- The import pipeline does not render or sanitize HTML at import time beyond existing Markdown validation rules. Public rendering remains the existing markdown-renderer responsibility.
+
+### Media Reference Detection
+
+The importer scans the Markdown body for local relative file references.
+
+Supported patterns:
+
+- Markdown image syntax, for example `![cover](./images/cover.png)`
+- Markdown link syntax, for example `[demo video](./clips/demo.mp4)` or `[podcast](./audio/intro.mp3)`
+
+The importer does not fetch or rewrite:
+
+- `http://`
+- `https://`
+- `mailto:`
+- already-saved `media://asset/...`
+- absolute Windows paths
+- absolute POSIX paths
+
+### Safe Local Path Resolution
+
+Each local relative path is resolved against the directory containing the selected `.md` file.
+
+Rules:
+
+- normalized path must stay inside that directory root
+- `../` traversal outside the root is rejected
+- duplicate references to the same normalized file path should map to one imported media asset inside the same import session
+- path matching is case-insensitive on Windows and case-sensitive on MinIO object keys
+
+## Media Library And MinIO Design
+
+### Scope
+
+This feature introduces MinIO-backed storage for imported media library assets discovered during Markdown import. It does not move article storage itself into MinIO.
+
+Existing writing rows remain database-backed. Existing local media assets may continue to resolve from local storage. New imported media assets for this workflow are MinIO-backed.
+
+This means the media subsystem must temporarily support mixed backends.
+
+### Supported Media Types
+
+Images:
+
+- `.png`
+- `.jpg`
+- `.jpeg`
+- `.webp`
+
+Video:
+
+- `.mp4`
+- `.webm`
+- `.mov`
+
+Audio:
+
+- `.mp3`
+- `.m4a`
+- `.wav`
+- `.ogg`
+
+Any future additions should happen centrally in the media service type allowlist, not only in the writing importer.
+
+### Storage Shape
+
+Use one logical MinIO media bucket for public library assets:
+
+```text
+portfolio-media
+```
+
+Use type-based key prefixes instead of separate buckets:
+
+```text
+images/YYYY/MM/{storage-key}/...
+videos/YYYY/MM/{storage-key}/...
+audio/YYYY/MM/{storage-key}/...
+```
+
+This keeps permissions, lifecycle policy, and public URL configuration simpler while still preserving type boundaries.
+
+If strict physical bucket separation is required later, the `BlobStore` layer can change without changing writing-import API contracts or stored Markdown.
+
+### BlobStore Evolution
+
+The system should formalize the storage abstraction that previous storage work already anticipated:
+
+```go
+type BlobStore interface {
+    Put(ctx context.Context, key string, reader io.Reader, contentType string) error
+    Open(ctx context.Context, key string) (io.ReadCloser, error)
+    Delete(ctx context.Context, key string) error
+    PublicURL(ctx context.Context, key string) string
+}
+```
+
+Implementations in scope after this design:
+
+- `LocalBlobStore` for existing local filesystem-backed assets
+- `MinIOBlobStore` for imported media assets
+
+The media read path must resolve by asset backend, not by a single global assumption.
+
+### Media Metadata Model
+
+Extend `media_assets` so new MinIO-backed assets can coexist with old local assets.
+
+New columns:
+
+- `storage_backend TEXT NOT NULL DEFAULT 'local'`
+  - allowed values: `local`, `minio`
+- `lifecycle_state TEXT NOT NULL DEFAULT 'active'`
+  - allowed values: `active`, `pending_import`
+- `media_kind TEXT NOT NULL DEFAULT 'image'`
+  - allowed values: `image`, `video`, `audio`
+
+Keep `storage_key` as the stable blob identifier.
+
+Keep `variants JSONB`, but allow mixed payloads during the transition:
+
+- local assets may keep `path`-oriented entries
+- minio assets should use `key`-oriented entries
+
+Example image asset variants for MinIO:
+
+```json
+{
+  "content": {
+    "key": "images/2026/06/abc123/content.jpg",
+    "mime_type": "image/jpeg",
+    "width": 1600,
+    "height": 900,
+    "size_bytes": 123456
+  },
+  "cover": {
+    "key": "images/2026/06/abc123/cover.jpg",
+    "mime_type": "image/jpeg",
+    "width": 1200,
+    "height": 675,
+    "size_bytes": 45678
+  },
+  "card": {
+    "key": "images/2026/06/abc123/card.jpg",
+    "mime_type": "image/jpeg",
+    "width": 800,
+    "height": 450,
+    "size_bytes": 23456
+  }
+}
+```
+
+Example video asset variants for MinIO:
+
+```json
+{
+  "original": {
+    "key": "videos/2026/06/def456/original.mp4",
+    "mime_type": "video/mp4",
+    "size_bytes": 24567890
+  }
+}
+```
+
+Example audio asset variants for MinIO:
+
+```json
+{
+  "original": {
+    "key": "audio/2026/06/ghi789/original.mp3",
+    "mime_type": "audio/mpeg",
+    "size_bytes": 5678901
+  }
+}
+```
+
+### Markdown Reference Strategy
+
+Imported content must not persist raw MinIO URLs inside `writings.content_md`.
+
+Instead, the importer should rewrite local references into system-managed media references:
+
+- images become `![alt](media://asset/{id}/content)`
+- video or audio links become `[label](media://asset/{id}/original)`
+
+This preserves the existing product principle that Markdown stores stable internal references instead of mutable delivery URLs.
+
+Consequences:
+
+- writing rows remain portable across storage backend changes
+- MinIO endpoint changes do not require rewriting stored Markdown
+- `media_references` can remain asset-based
+- the renderer and API can resolve final public URLs consistently
+
+### Markdown Rendering Extension
+
+The existing Markdown system already knows how to resolve `media://asset/{id}/{variant}` for images.
+
+Extend it so Markdown links with `href=media://asset/{id}/{variant}` are also resolved through the media map:
+
+- image syntax continues to render image output
+- link syntax resolves to a safe public URL anchor
+
+Public pages do not need embedded media players in v1. A standard link is acceptable for imported audio and video references.
+
+## Import Session Design
+
+The feature needs explicit session state because preview and commit are separate operations.
+
+Add:
+
+```text
+writing_import_sessions
+writing_import_session_assets
+```
+
+### `writing_import_sessions`
+
+Fields:
+
+- `id`
+- `token_hash`
+- `mode`
+- `target_writing_id`
+- `target_writing_etag`
+- `source_file_name`
+- `source_checksum_sha256`
+- `front_matter JSONB`
+- `ignored_front_matter_keys JSONB`
+- `original_markdown`
+- `rewritten_markdown`
+- `parsed_payload JSONB`
+- `status`
+- `expires_at`
+- `created_at`
+- `updated_at`
+
+Allowed `mode` values:
+
+- `create`
+- `overwrite`
+
+Allowed `status` values:
+
+- `preview_ready`
+- `committed`
+- `expired`
+- `failed`
+
+### `writing_import_session_assets`
+
+Fields:
+
+- `id`
+- `session_id`
+- `media_asset_id`
+- `original_relative_path`
+- `normalized_source_path`
+- `replacement_ref`
+- `status`
+- `error_message`
+- `created_at`
+
+Allowed `status` values:
+
+- `prepared`
+- `failed`
+- `activated`
+- `cleaned`
+
+The session tables own preview-stage imported media before the writing row is committed.
+
+### Session Lifetime
+
+Import sessions expire after 2 hours by default.
+
+Expired sessions must be cleaned by a background job or startup cleanup path that:
+
+- deletes pending MinIO objects for uncommitted session assets
+- deletes `media_assets` rows still marked `pending_import`
+- deletes session rows or marks them expired
+
+## Preview And Commit API
+
+Keep the existing writing CRUD routes unchanged. Add a dedicated import API.
+
+### `POST /api/admin/writing/imports/preview`
+
+Purpose:
+
+- parse the Markdown file
+- detect front matter
+- validate and prepare local media imports
+- create pending media assets
+- rewrite Markdown to final internal media references
+- return a preview snapshot plus import token
+
+Request type:
+
+- `multipart/form-data`
+
+Request parts:
+
+- `markdown_file`
+- `media_files[]`
+- `mode`
+- `target_id`
+- `parse_front_matter`
+
+Behavior:
+
+- `target_id` is required only for `overwrite`
+- if overwrite mode is selected, target writing must exist and be `draft`
+- target writing `ETag` or version snapshot is captured into the session at preview time
+
+Preview response shape:
+
+```json
+{
+  "import_token": "opaque-token",
+  "mode": "create",
+  "target": null,
+  "parsed": {
+    "title": "Example title",
+    "excerpt": "Example excerpt",
+    "tags": ["AI", "Notes"],
+    "slug": "example-title",
+    "seo_title": "",
+    "seo_description": "",
+    "content_md": "![cover](media://asset/201/content)"
+  },
+  "front_matter": {
+    "used_keys": ["title", "tags"],
+    "ignored_keys": ["date"]
+  },
+  "media": [
+    {
+      "original_path": "./images/cover.png",
+      "media_asset_id": 201,
+      "media_kind": "image",
+      "status": "prepared",
+      "replacement_ref": "media://asset/201/content"
+    }
+  ],
+  "warnings": [],
+  "blocking_errors": []
+}
+```
+
+### `POST /api/admin/writing/imports/commit`
+
+Purpose:
+
+- finalize the preview payload as a real writing save
+- either create a new writing or overwrite the target draft
+- activate all pending media assets prepared by the import session
+- refresh `media_references` through the normal writing save logic
+
+Request body:
+
+```json
+{
+  "import_token": "opaque-token",
+  "mode": "overwrite",
+  "target_id": 12,
+  "payload": {
+    "title": "Edited title",
+    "excerpt": "Edited excerpt",
+    "slug": "edited-title",
+    "seo_title": "",
+    "seo_description": "",
+    "content_md": "![cover](media://asset/201/content)",
+    "tags": ["AI", "Notes"]
+  }
+}
+```
+
+Commit response shape:
+
+```json
+{
+  "writing": {
+    "id": 12,
+    "title": "Edited title",
+    "slug": "edited-title",
+    "excerpt": "Edited excerpt",
+    "content_md": "![cover](media://asset/201/content)",
+    "status": "draft"
+  },
+  "import_summary": {
+    "mode": "overwrite",
+    "media_prepared": 1,
+    "media_activated": 1,
+    "warnings": []
+  }
+}
+```
+
+### Route Naming
+
+Use singular resource naming to stay consistent with the existing admin API:
+
+- `/api/admin/writing/imports/preview`
+- `/api/admin/writing/imports/commit`
+
+Do not introduce `/api/admin/writings/...`.
+
+## Service Responsibilities
+
+Add a dedicated import orchestration service, for example:
+
+```text
+internal/content/writing_import.go
+internal/content/writing_import_routes.go
+```
+
+Responsibilities:
+
+- parse Markdown and front matter
+- resolve local relative media references
+- validate imported media types
+- prepare pending media assets through the media subsystem
+- rewrite Markdown references
+- persist and validate import sessions
+- commit through existing `CreateWriting` or `UpdateWriting`
+
+Keep it separate from the regular writing repository methods. Normal writing create and update should not grow preview-session concerns.
+
+## Media Service Changes
+
+The media service must grow in these ways:
+
+- support `image`, `video`, and `audio`
+- support `local` and `minio` backends
+- support `active` and `pending_import` lifecycle states
+- expose an internal prepare/activate/cleanup workflow for import sessions
+
+Suggested internal service shape:
+
+- `PrepareImportAsset(...)`
+- `ActivatePreparedAsset(...)`
+- `CleanupPreparedAsset(...)`
+
+`Upload(...)` for the existing media page can remain, but the new writing import flow should not fake itself through the existing generic single-file upload endpoint.
+
+## Write-Path Consistency
+
+### Preview Phase
+
+During preview:
+
+1. validate `.md`
+2. parse front matter
+3. detect local media references
+4. prepare MinIO-backed assets as `pending_import`
+5. create `media_assets` rows as `pending_import`
+6. rewrite Markdown using final `media://asset/{id}/{variant}` refs
+7. persist import session
+8. return preview payload
+
+Prepared assets must not appear in the normal `/api/admin/media` list until activated.
+
+### Commit Phase
+
+During commit:
+
+1. load session by token
+2. verify not expired and not already committed
+3. verify overwrite target has not changed
+4. verify no blocking media failures remain
+5. save writing through the existing repository path
+6. activate all pending media assets for the session
+7. rebuild `media_references`
+8. mark session committed
+
+Writing save and media activation should happen within one coordinated transaction boundary as far as database state is concerned.
+
+If MinIO activation cleanup cannot be done atomically with the database write, the failure strategy must prefer:
+
+- no visible writing commit
+- no active media rows
+- session left in recoverable failed state
+
+### Abandonment And Cleanup
+
+If the user never commits:
+
+- session expires
+- pending media rows are deleted
+- corresponding MinIO objects are deleted
+- no writing row is created or changed
+
+This prevents orphaned preview artifacts from becoming visible library assets.
+
+## Validation Rules
+
+### Markdown File
+
+- required
+- extension must be `.md`
+- size cap: 1 MB
+- decode as UTF-8 text
+
+### Referenced Local Media
+
+- must be explicitly supplied in `media_files[]`
+- must resolve inside the Markdown directory root
+- duplicate logical paths are deduplicated
+
+### Media Size Caps
+
+Images:
+
+- keep existing image upload limits
+
+Audio:
+
+- max 50 MB per file
+
+Video:
+
+- max 200 MB per file
+
+Overall preview request:
+
+- max 300 MB
+
+The preview endpoint must stream large multipart files to temp storage instead of reading every file fully into memory.
+
+### Overwrite Safety
+
+Overwrite is allowed only when:
+
+- target writing exists
+- target writing status is `draft`
+- target writing version matches the preview snapshot
+
+If the draft changed after preview generation, commit returns `409 conflict` and asks the user to regenerate preview.
+
+## Writing Repository And Markdown Validation Changes
+
+`CreateWriting` and `UpdateWriting` should continue to own the final save.
+
+The Markdown validation layer needs a narrow extension:
+
+- continue rejecting raw `/uploads/*`
+- continue rejecting remote images
+- continue rejecting unsafe media references
+- allow internal `media://asset/{id}/{variant}` links for image, audio, and video references
+
+Do not broaden the write path to allow arbitrary vendor URLs from MinIO or elsewhere.
+
+## Admin Media Library Changes
+
+The media page must evolve enough to represent imported non-image assets:
+
+- show media type badge: image, video, audio
+- render image thumbnails when available
+- render placeholder tiles for audio and video
+- keep delete behavior based on reference state
+
+Direct manual upload of audio and video from `/admin/media` is a compatible follow-up, but it is not required for the first Markdown-import release.
+
+Imported assets from writing import must still appear in the media library after activation.
+
+`GET /api/admin/media` should return only `active` assets in normal mode. Pending import assets remain hidden from the regular media library until the import is committed.
+
+## Security Considerations
+
+- Import is admin-authenticated only.
+- Server never reads arbitrary local filesystem paths directly from the client.
+- Client-supplied relative paths are only used to match uploaded multipart files within the import session.
+- No remote fetch is allowed during import.
+- Markdown import does not weaken existing public Markdown sanitization.
+- Internal `media://asset/...` references remain the only durable asset syntax saved to writing bodies.
+- Public delivery URLs are resolved at read time through media metadata and storage backend logic.
+
+## Operational Considerations
+
+- MinIO configuration becomes a required runtime dependency only for this feature path.
+- Existing deployments without MinIO should either disable the import feature or fail startup with a clear message once the feature is enabled.
+- Add startup validation for:
+  - MinIO endpoint
+  - access key
+  - secret key
+  - public base URL for object delivery
+  - bucket existence or auto-create policy
+
+Recommended runtime config additions:
+
+```text
+MEDIA_BLOB_BACKEND
+MINIO_ENDPOINT
+MINIO_ACCESS_KEY
+MINIO_SECRET_KEY
+MINIO_BUCKET
+MINIO_PUBLIC_BASE_URL
+MINIO_USE_SSL
+```
+
+`MEDIA_BLOB_BACKEND` should allow `local` and `hybrid`.
+
+Suggested meaning:
+
+- `local`: existing behavior only
+- `hybrid`: existing local assets remain valid, imported writing media uses MinIO
+
+## Testing Strategy
+
+### Backend
+
+Unit tests:
+
+- front matter parsing with and without YAML
+- tag normalization from array and comma-separated string
+- local path normalization and traversal rejection
+- Markdown rewrite for image links
+- Markdown rewrite for audio or video links
+- duplicate local media reference deduplication
+- unsupported media type rejection
+- overwrite draft conflict after version change
+
+Repository or integration tests:
+
+- preview creates pending import session
+- preview creates pending media assets not visible in normal media list
+- commit creates new writing successfully
+- commit overwrites draft successfully
+- commit activates pending assets
+- expired session cleanup removes pending rows and MinIO objects
+- commit failure leaves no active media rows and no visible writing change
+
+Blob store tests:
+
+- `MinIOBlobStore` put and public URL resolution
+- cleanup delete for prepared assets
+- mixed local and minio asset read resolution
+
+### Frontend
+
+- writing list page shows `导入 Markdown`
+- draft editor shows `导入本地 Markdown`
+- preview step renders parsed metadata
+- preview step renders blocking errors
+- confirm button state matches create or overwrite mode
+- overwrite mode unavailable for non-drafts
+
+### Browser Verification
+
+End-to-end checks once implemented:
+
+- import Markdown with front matter and one image
+- import Markdown without front matter
+- overwrite existing draft
+- import Markdown with missing local media and verify commit is blocked
+- verify imported image appears as media library asset after commit
+
+## Rollout Plan
+
+Implement in these slices:
+
+1. formalize blob-store backend boundary and hybrid asset resolution
+2. add MinIO-backed pending media asset support
+3. add writing import preview and commit APIs
+4. add admin writing import UI and preview workflow
+5. add media library support for non-image asset representation
+6. verify create and overwrite flows end-to-end
+
+Each slice should remain shippable behind a feature flag if MinIO is not universally available yet.
+
+## Open Design Decision Recorded Here
+
+This design intentionally uses one logical media bucket with type prefixes instead of separate buckets per type. That is the recommended first version because it keeps the operational model simple while preserving type separation at the key level.
+
+If strict per-type buckets later become necessary, the storage abstraction should absorb that change without requiring Markdown or writing schema changes.
