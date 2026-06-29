@@ -20,6 +20,15 @@ npm run build
 cd ..
 ```
 
+Focused writing import frontend checks:
+
+```powershell
+npm --prefix web test -- src/components/markdown/MarkdownView.test.tsx src/features/admin/WritingImportDialog.test.tsx src/features/admin/AdminUI.test.tsx
+cd web
+npx tsc -b
+cd ..
+```
+
 Run the combined server after building `web/dist`:
 
 ```powershell
@@ -37,6 +46,28 @@ go run ./cmd/server
 ```
 
 Set `PORT` to override the default `8080`. `APP_ORIGINS` is optional and accepts a comma-separated allowlist for additional admin origins, such as a local preview URL plus a Tailscale Funnel URL.
+
+## Writing Markdown Import
+
+When `MEDIA_BLOB_BACKEND=hybrid`, imported writing media is stored through MinIO while legacy image uploads can continue using the local uploads directory. Set all of the following environment variables before starting the server:
+
+- `MINIO_ENDPOINT`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `MINIO_BUCKET`
+- `MINIO_USE_SSL`
+
+The server now fails fast on startup if hybrid media mode is enabled but any required MinIO setting is missing.
+
+Focused verification commands for the writing import slice:
+
+```powershell
+go test ./internal/config ./internal/db ./internal/media ./internal/content -count=1
+npm --prefix web test -- src/components/markdown/MarkdownView.test.tsx src/features/admin/WritingImportDialog.test.tsx src/features/admin/AdminUI.test.tsx
+cd web
+npx tsc -b
+cd ..
+```
 
 ## Backup And Restore
 

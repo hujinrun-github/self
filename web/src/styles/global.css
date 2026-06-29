@@ -6,11 +6,12 @@ html {
   color: var(--color-text);
   background: var(--color-bg);
   font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
+    "Aptos",
+    "SF Pro Display",
+    "Segoe UI Variable",
     "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
     sans-serif;
 }
 

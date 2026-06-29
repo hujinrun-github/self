@@ -26,6 +26,11 @@ type Session struct {
 
 type sessionContextKey struct{}
 
+func SessionFromContext(ctx context.Context) (Session, bool) {
+	session, ok := ctx.Value(sessionContextKey{}).(Session)
+	return session, ok
+}
+
 func (s *Service) createSession(ctx context.Context, adminID int64) (Session, string, error) {
 	rawToken, err := randomToken(32)
 	if err != nil {

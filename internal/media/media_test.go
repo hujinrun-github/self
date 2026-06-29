@@ -148,6 +148,63 @@ func TestReferencesBlockDeleteAndPickerShowsReferenced(t *testing.T) {
 	}
 }
 
+func TestListHidesPendingImportAssets(t *testing.T) {
+	service := newMediaService(t)
+	insertPendingImportAsset(t, service.db, "pending-audio.mp3")
+
+	items, err := service.List(context.Background(), 1, 20, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, item := range items {
+		if item.FileName == "pending-audio.mp3" {
+			t.Fatalf("pending import asset leaked into admin list: %+v", item)
+		}
+	}
+}
+
+func TestListIncludesActiveAudioAssets(t *testing.T) {
+	service := newMediaService(t)
+	insertActiveAudioAsset(t, service.db, "published-audio.mp3")
+
+	items, err := service.List(context.Background(), 1, 20, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	for _, item := range items {
+		if item.FileName != "published-audio.mp3" {
+			continue
+		}
+		if item.Width != 0 || item.Height != 0 {
+			t.Fatalf("audio dimensions = (%d, %d), want zero values", item.Width, item.Height)
+		}
+		return
+	}
+
+	t.Fatal("expected active audio asset in media list")
+}
+
+func TestPrepareImportAssetStoresAudioAsPendingImport(t *testing.T) {
+	service := newImportReadyMediaService(t, stubBlobStore{})
+	asset, err := service.PrepareImportAsset(context.Background(), PrepareImportAssetInput{
+		FileName:       "intro.mp3",
+		MediaKind:      "audio",
+		Contents:       []byte("fake-mp3"),
+		OriginalPath:   "./audio/intro.mp3",
+		StorageBackend: "minio",
+	})
+	if err != nil {
+		t.Fatalf("PrepareImportAsset: %v", err)
+	}
+	if asset.LifecycleState != "pending_import" {
+		t.Fatalf("LifecycleState = %q", asset.LifecycleState)
+	}
+	if _, ok := asset.Variants["original"]; !ok {
+		t.Fatalf("variants = %+v", asset.Variants)
+	}
+}
+
 func TestDeleteMapsForeignKeyViolationToErrReferenced(t *testing.T) {
 	service := newMediaService(t)
 	assetID := insertMediaAsset(t, service.db, "deadbeef00112233445566778899aabb", "cover.png")
@@ -183,7 +240,14 @@ func newMediaService(t *testing.T) *Service {
 	database, _ := dbtest.OpenPostgres(t)
 
 	root := t.TempDir()
-	service := NewService(database, filepath.Join(root, "uploads"), filepath.Join(root, "private_uploads"))
+	uploadsDir := filepath.Join(root, "uploads")
+	service := NewService(
+		database,
+		uploadsDir,
+		filepath.Join(root, "private_uploads"),
+		NewLocalBlobStore(uploadsDir),
+		nil,
+	)
 	return service
 }
 
@@ -208,6 +272,28 @@ func insertMediaAsset(t *testing.T, database *sql.DB, storageKey string, fileNam
 		t.Fatalf("insert media asset: %v", err)
 	}
 	return id
+}
+
+func insertPendingImportAsset(t *testing.T, database *sql.DB, fileName string) {
+	t.Helper()
+
+	if _, err := database.Exec(`
+INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at, storage_backend, lifecycle_state, media_kind)
+VALUES ($1, 'pending-audio-key', 'audio/mpeg', 4, NULL, NULL, '{"original":{"key":"audio/2026/06/pending/original.mp3","mime_type":"audio/mpeg","size_bytes":4}}'::jsonb, 'sum-pending-audio', now(), 'minio', 'pending_import', 'audio')
+`, fileName); err != nil {
+		t.Fatalf("insertPendingImportAsset: %v", err)
+	}
+}
+
+func insertActiveAudioAsset(t *testing.T, database *sql.DB, fileName string) {
+	t.Helper()
+
+	if _, err := database.Exec(`
+INSERT INTO media_assets (file_name, storage_key, mime_type, size_bytes, width, height, variants, checksum_sha256, created_at, storage_backend, lifecycle_state, media_kind)
+VALUES ($1, 'active-audio-key', 'audio/mpeg', 4, NULL, NULL, '{"original":{"key":"audio/2026/06/active/original.mp3","mime_type":"audio/mpeg","size_bytes":4}}'::jsonb, 'sum-active-audio', now(), 'minio', 'active', 'audio')
+`, fileName); err != nil {
+		t.Fatalf("insertActiveAudioAsset: %v", err)
+	}
 }
 
 func testPNG(t *testing.T, width int, height int) []byte {

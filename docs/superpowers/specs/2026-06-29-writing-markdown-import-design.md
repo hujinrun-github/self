@@ -39,6 +39,15 @@ The existing system already has these relevant boundaries:
 
 This feature should build on those boundaries instead of replacing them.
 
+The current frontend and public-detail contract also has gaps that must be fixed as part of this feature:
+
+- the shared Markdown renderer currently rewrites inline images only when resolved URLs begin with `/uploads/`
+- the shared safe-link logic does not recognize `media://asset/...` references
+- the public writing detail response does not currently guarantee an attached `media` map for Markdown resolution
+- the frontend `MediaVariant` type assumes `width` and `height` are always present
+
+The writing-import feature must close those gaps instead of working around them with a writing-only exception.
+
 ## Non-Goals
 
 The first version does not include:
@@ -52,6 +61,7 @@ The first version does not include:
 - full migration of all existing media assets from local filesystem storage to MinIO
 - changing the public writing page structure
 - changing the multilingual translation workflow
+- preserving the old `/uploads/...`-only assumption in Markdown rendering
 
 ## User Experience
 
@@ -143,6 +153,8 @@ Each detected local media file should show:
 - resulting public delivery type
 
 When an asset fails validation, the preview must keep the item visible with a clear blocking reason instead of silently skipping it.
+
+When an asset succeeds, preview should also show the resolved same-origin delivery route that the public site will use, for example `/media/201/content`.
 
 ### Empty, Warning, and Blocking States
 
@@ -299,6 +311,33 @@ This keeps permissions, lifecycle policy, and public URL configuration simpler w
 
 If strict physical bucket separation is required later, the `BlobStore` layer can change without changing writing-import API contracts or stored Markdown.
 
+### Public Media URL Architecture
+
+This feature should standardize on a backend-resolved same-origin public media route:
+
+```text
+/media/{assetID}/{variant}
+```
+
+Examples:
+
+- `/media/201/content`
+- `/media/201/card`
+- `/media/301/original`
+
+This route is the canonical public delivery path for all API-provided media references, regardless of whether the underlying asset lives on local disk or in MinIO.
+
+Reasons:
+
+- it removes the frontend dependency on `/uploads/...`
+- it keeps MinIO endpoints private to the server if desired
+- it lets the backend resolve delivery by `storage_backend`
+- it gives one stable URL contract for local, hybrid, and future fully-remote storage
+
+Legacy `/uploads/*` static serving may remain for backward compatibility with older stored or cached URLs, but newly returned `MediaMap` entries for markdown-rendered content should use `/media/{id}/{variant}`.
+
+This means frontend rendering no longer depends on the backend object URL format. Whether the bytes ultimately come from local disk or MinIO is hidden behind the same-origin route contract.
+
 ### BlobStore Evolution
 
 The system should formalize the storage abstraction that previous storage work already anticipated:
@@ -318,6 +357,32 @@ Implementations in scope after this design:
 - `MinIOBlobStore` for imported media assets
 
 The media read path must resolve by asset backend, not by a single global assumption.
+
+`BlobStore.Open()` becomes part of the public media delivery path. The new `/media/{assetID}/{variant}` handler should:
+
+1. load `media_assets`
+2. validate the requested variant exists
+3. derive a stable blob key for the requested backend and variant
+4. inspect `storage_backend`
+5. stream bytes through the matching blob store implementation
+6. set exact `Content-Type`
+7. set immutable cache headers
+
+For `LocalBlobStore`, the `Open(ctx, key)` argument should mean a blob key relative to the local uploads root, not a public path such as `/uploads/ab/cd/content.jpg`.
+
+The handler should therefore avoid trusting legacy JSONB `variants.path` for filesystem lookup. For legacy local assets it should derive the local blob key from stable metadata:
+
+- `storage_key`
+- requested variant name
+- the known local derivative naming convention, for example `content.jpg`, `cover.jpg`, `card.jpg`, `avatar.png`
+
+Then `LocalBlobStore` can resolve the physical file from its configured `uploadsDir` root plus that relative key.
+
+This keeps public routing independent from possibly stale historical `variants.path` values and matches the broader rule that `storage_key` is the stable identifier while delivery paths are derived.
+
+This replaces the old assumption that all public media can be served directly from `http.FileServer(http.Dir(uploadsDir))`.
+
+`BlobStore.PublicURL(...)` may still exist for internal tooling or future signed-object workflows, but Markdown and public detail APIs should not expose backend object URLs directly. Their stable contract is the same-origin `/media/{assetID}/{variant}` route.
 
 ### Media Metadata Model
 
@@ -408,6 +473,22 @@ Example audio asset variants for MinIO:
 }
 ```
 
+Frontend type impact:
+
+- image variants keep `width` and `height`
+- audio and video `original` variants omit `width` and `height`
+
+The shared frontend `MediaVariant` type must therefore change to:
+
+```ts
+type MediaVariant = {
+  url: string;
+  width?: number;
+  height?: number;
+  mime_type: string;
+};
+```
+
 ### Markdown Reference Strategy
 
 Imported content must not persist raw MinIO URLs inside `writings.content_md`.
@@ -436,6 +517,22 @@ Extend it so Markdown links with `href=media://asset/{id}/{variant}` are also re
 - link syntax resolves to a safe public URL anchor
 
 Public pages do not need embedded media players in v1. A standard link is acceptable for imported audio and video references.
+
+Required frontend renderer changes:
+
+- remove the hardcoded `/uploads/` gate from image rewrite logic
+- resolve any `media://asset/{id}/{variant}` reference through the provided `MediaMap`
+- only trust resolved URLs that point to the canonical same-origin `/media/` route
+- for anchor tags, resolve `media://asset/...` before applying generic safe-link checks
+
+Recommended rendering flow:
+
+1. parse Markdown
+2. when encountering `media://asset/{id}/{variant}`, call a shared `resolveMediaURL(...)`
+3. if resolution succeeds, replace the href or img src with the resolved same-origin `/media/...` URL
+4. only after resolution, apply link safety checks to non-media links
+
+This keeps raw `media://` values from ever reaching the browser as final href or src values.
 
 ## Schema Migration
 
@@ -466,6 +563,15 @@ ALTER TABLE media_assets
 ```
 
 The migration must then replace the old unconditional `width > 0` and `height > 0` checks with the conditional image-only rule above.
+
+Because the original checks were created inline without explicit names, the migration must first discover and drop the generated PostgreSQL constraint names before adding the new composite constraint. The migration cannot rely on a fixed legacy constraint name.
+
+Recommended migration shape:
+
+- drop `NOT NULL` from `width` and `height`
+- run a `DO $$ ... $$` block that locates the legacy width and height check constraints in `pg_constraint`
+- drop those discovered constraints
+- add the new named composite constraint, for example `media_assets_kind_dimensions_check`
 
 `writing_import_sessions` should index:
 
@@ -625,6 +731,22 @@ Preview response shape:
     "seo_description": "",
     "content_md": "![cover](media://asset/201/content)"
   },
+  "media_map": {
+    "201": {
+      "content": {
+        "url": "/media/201/content",
+        "width": 1600,
+        "height": 900,
+        "mime_type": "image/jpeg"
+      },
+      "card": {
+        "url": "/media/201/card",
+        "width": 800,
+        "height": 450,
+        "mime_type": "image/jpeg"
+      }
+    }
+  },
   "front_matter": {
     "used_keys": ["title", "tags"],
     "ignored_keys": ["date"]
@@ -655,6 +777,7 @@ Rules:
 - returns `404` if the token is unknown or not owned by the current session
 - returns `410` if the preview session is expired
 - requires only normal authenticated admin GET semantics, not CSRF
+- returns the same `media_map` contract as the preview response so the frontend can fully restore the import preview surface after refresh
 
 ### `POST /api/admin/writing/imports/commit`
 
@@ -706,7 +829,17 @@ Commit response shape:
     "slug": "edited-title",
     "excerpt": "Edited excerpt",
     "content_md": "![cover](media://asset/201/content)",
-    "status": "draft"
+    "status": "draft",
+    "media": {
+      "201": {
+        "content": {
+          "url": "/media/201/content",
+          "width": 1600,
+          "height": 900,
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
   },
   "import_summary": {
     "mode": "overwrite",
@@ -788,6 +921,8 @@ Expected MIME families:
 - image: `image/png`, `image/jpeg`, `image/webp`
 - video: `video/mp4`, `video/webm`, `video/quicktime`
 - audio: `audio/mpeg`, `audio/mp4`, `audio/wav`, `audio/wave`, `audio/ogg`
+
+The current `Upload(...)` path remains image-only unless and until the media page is explicitly extended for manual audio/video uploads. `PrepareImportAsset(...)` must be a separate validation and storage path rather than an alias to the existing image uploader.
 
 ## Write-Path Consistency
 
@@ -907,6 +1042,99 @@ When the writing save rebuilds `media_references`, imported article assets conti
 
 No new `media_references.source` enum is required for this feature.
 
+## Public API Enrichment For Markdown Media
+
+This feature requires a real `MediaMap` contract on public writing detail responses.
+
+Add `media` to the writing detail item shape:
+
+```go
+type Writing struct {
+    ...
+    Media map[string]map[string]MediaVariant `json:"media,omitempty"`
+}
+```
+
+The public writing detail read path must:
+
+1. load the writing row or localized writing row
+2. scan `content_md` for `media://asset/{id}/{variant}` references
+3. fetch the corresponding `media_assets` rows
+4. build a `MediaMap`
+5. attach that map to `item.media`
+
+The same enrichment rule should apply for:
+
+- source-locale writing detail
+- translated writing detail
+- writing import preview response
+- writing import recovery response
+- commit response when the returned writing includes `content_md`
+
+This scan-and-enrich step is required for imported writing media to render at all.
+
+To avoid contract drift, the same approach should also be applied to any other long-body resource that uses `MarkdownView`, especially projects.
+
+Performance note:
+
+- for a single public detail page, scanning `content_md` on read is acceptable in v1 even for moderately long articles
+- the enrichment step should deduplicate referenced asset IDs before the metadata lookup so it performs one batched query, not one query per match
+- if this later becomes hot, the extension point is to precompute referenced media IDs at write time, for example into a dedicated join table or a cached `BIGINT[]` column, without changing the public `item.media` response contract
+
+Public detail response example:
+
+```json
+{
+  "item": {
+    "id": 12,
+    "title": "Example",
+    "slug": "example",
+    "content_md": "![cover](media://asset/201/content)\n\n[podcast](media://asset/301/original)",
+    "media": {
+      "201": {
+        "content": {
+          "url": "/media/201/content",
+          "width": 1600,
+          "height": 900,
+          "mime_type": "image/jpeg"
+        }
+      },
+      "301": {
+        "original": {
+          "url": "/media/301/original",
+          "mime_type": "audio/mpeg"
+        }
+      }
+    }
+  },
+  "locale": {
+    "requested": "zh",
+    "resolved": "zh"
+  }
+}
+```
+
+List responses do not need to attach `media` unless that page actually renders full Markdown bodies. The required contract is on any response consumed by `MarkdownView`.
+
+## Frontend Contract Changes
+
+The shared markdown and public-detail frontend contract must be updated in these ways:
+
+- `MediaVariant.width` and `MediaVariant.height` become optional
+- image rendering only supplies width and height attributes when present
+- `MarkdownView` resolves media references through `MediaMap`, not through a hardcoded `/uploads/` prefix
+- `MarkdownView` resolves media links as anchors before generic safe-link validation
+- detail responses continue to use `detail.item.media` so the existing page composition stays stable
+
+`isSafeLink(...)` should not become a blanket whitelist for raw `media://` values across the app. Instead, the markdown renderer should resolve known `media://asset/...` references first, then pass the resolved same-origin `/media/...` URL through normal safety checks.
+
+Concretely:
+
+- `rewriteMediaImages(...)` should stop checking `variant.url.startsWith("/uploads/")`
+- image rewrites should succeed when the resolved URL is the canonical `/media/...` route
+- anchor rendering should detect `media://asset/...`, resolve it through `resolveMediaURL(...)`, and then render the resolved `/media/...` href
+- unresolved `media://asset/...` references should degrade safely instead of emitting a broken browser link
+
 ## Admin Media Library Changes
 
 The media page must evolve enough to represent imported non-image assets:
@@ -915,6 +1143,21 @@ The media page must evolve enough to represent imported non-image assets:
 - render image thumbnails when available
 - render placeholder tiles for audio and video
 - keep delete behavior based on reference state
+- keep `accept` rules aligned with the allowed upload kinds for the surface in question
+- stop assuming every media card has an image-style `variants.card` thumbnail
+
+Recommended placeholder presentation for non-image media cards:
+
+- keep the same card frame and sizing as image cards so the grid remains stable
+- replace the thumbnail area with a themed placeholder panel
+- video uses a play icon plus `VIDEO` badge
+- audio uses a waveform or speaker icon plus `AUDIO` badge
+- show filename and MIME type in the body
+- copy helper should emit `[label](media://asset/{id}/original)` for audio or video assets instead of image syntax
+
+For image assets, the card may still preview `variants.card` when available and copy an image-oriented markdown helper.
+
+If the media page later supports direct manual audio or video upload, its file input must expand beyond the current image-only accept list. That UI change is not a hidden side effect of the writing-import release; it should be implemented deliberately if included in scope.
 
 Direct manual upload of audio and video from `/admin/media` is a compatible follow-up, but it is not required for the first Markdown-import release.
 
@@ -940,8 +1183,8 @@ Imported assets from writing import must still appear in the media library after
   - MinIO endpoint
   - access key
   - secret key
-  - public base URL for object delivery
   - bucket existence or auto-create policy
+  - ability for the application server to read stored objects back through the configured credentials so `/media/{assetID}/{variant}` can stream them
 
 Recommended runtime config additions:
 
@@ -951,9 +1194,10 @@ MINIO_ENDPOINT
 MINIO_ACCESS_KEY
 MINIO_SECRET_KEY
 MINIO_BUCKET
-MINIO_PUBLIC_BASE_URL
 MINIO_USE_SSL
 ```
+
+The public site does not need a MinIO public base URL for this feature because browser-facing media delivery is standardized on same-origin `/media/{assetID}/{variant}`.
 
 `MEDIA_BLOB_BACKEND` should allow `local` and `hybrid`.
 
@@ -976,6 +1220,9 @@ Unit tests:
 - duplicate local media reference deduplication
 - unsupported media type rejection
 - overwrite draft conflict after version change
+- public media-map enrichment for `media://asset/...` references in writing content
+- frontend media URL resolution from `media://asset/...` to `/media/{id}/{variant}`
+- renderer behavior when image variants have width and height but audio or video variants do not
 
 Repository or integration tests:
 
@@ -986,6 +1233,8 @@ Repository or integration tests:
 - commit activates pending assets
 - expired session cleanup removes pending rows and MinIO objects
 - commit failure leaves no active media rows and no visible writing change
+- public writing detail returns `item.media` when `content_md` references internal media
+- `/media/{assetID}/{variant}` streams both legacy local assets and MinIO-backed assets
 
 Blob store tests:
 
@@ -1001,6 +1250,8 @@ Blob store tests:
 - preview step renders blocking errors
 - confirm button state matches create or overwrite mode
 - overwrite mode unavailable for non-drafts
+- Markdown image rendering works from resolved `/media/...` URLs instead of `/uploads/...`
+- Markdown media links render clickable anchors after `media://asset/...` resolution
 
 ### Browser Verification
 
@@ -1011,6 +1262,7 @@ End-to-end checks once implemented:
 - overwrite existing draft
 - import Markdown with missing local media and verify commit is blocked
 - verify imported image appears as media library asset after commit
+- verify imported audio or video links resolve to clickable `/media/...` URLs on the public writing page
 
 ## Rollout Plan
 
@@ -1030,3 +1282,5 @@ Each slice should remain shippable behind a feature flag if MinIO is not univers
 This design intentionally uses one logical media bucket with type prefixes instead of separate buckets per type. That is the recommended first version because it keeps the operational model simple while preserving type separation at the key level.
 
 If strict per-type buckets later become necessary, the storage abstraction should absorb that change without requiring Markdown or writing schema changes.
+
+Another recorded trade-off: public detail reads enrich Markdown media by scanning `content_md` on demand. That is the right first implementation because it keeps the write path simple and the API contract explicit. If future performance data shows this is too expensive for very long documents or very high traffic, the likely next step is cached referenced-media IDs at write time, not a change to the `/media/...` route or `item.media` response shape.

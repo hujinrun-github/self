@@ -27,6 +27,7 @@ type Writing struct {
 	Slug        string     `json:"slug"`
 	Excerpt     string     `json:"excerpt"`
 	ContentMD   string     `json:"content_md"`
+	Media       MediaMap   `json:"media,omitempty"`
 	Status      Status     `json:"status"`
 	Featured    bool       `json:"featured"`
 	SortOrder   int        `json:"sort_order"`
@@ -119,6 +120,85 @@ func (r *Repository) GetWriting(ctx context.Context, id int64) (Writing, error) 
 	}
 	writing.Tags = tags
 	return writing, nil
+}
+
+func (r *Repository) UpdateWriting(ctx context.Context, id int64, input WritingInput) (Writing, error) {
+	if err := validateMarkdownMedia(input.ContentMD); err != nil {
+		return Writing{}, err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Writing{}, err
+	}
+	defer tx.Rollback()
+
+	var currentSlug string
+	var status Status
+	if err := tx.QueryRowContext(ctx, `SELECT slug, status FROM writings WHERE id = $1`, id).Scan(&currentSlug, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Writing{}, ErrNotFound
+		}
+		return Writing{}, err
+	}
+	nextSlug := currentSlug
+	if input.Slug != "" || input.Title != "" {
+		candidateInput := chooseSlugInput(input.Slug, input.Title)
+		if candidateInput != "" {
+			candidate, err := Slugify(candidateInput)
+			if err != nil {
+				return Writing{}, err
+			}
+			if status != StatusDraft && candidate != currentSlug {
+				return Writing{}, ErrImmutableSlug
+			}
+			if status == StatusDraft && candidate != currentSlug {
+				nextSlug, err = r.uniqueSlug(ctx, tx, "writings", id, candidate)
+				if err != nil {
+					return Writing{}, err
+				}
+			}
+		}
+	}
+
+	now := normalizeTime(r.clock())
+	_, err = tx.ExecContext(ctx, `UPDATE writings SET title = $1, slug = $2, excerpt = $3, content_md = $4, cover_media_id = $5, seo_title = $6, seo_description = $7, og_image_media_id = $8, featured = $9, published_at = COALESCE($10, published_at), updated_at = $11,
+		translation_source_version = translation_source_version + CASE
+			WHEN title IS DISTINCT FROM $1
+			  OR slug IS DISTINCT FROM $2
+			  OR excerpt IS DISTINCT FROM $3
+			  OR content_md IS DISTINCT FROM $4
+			  OR seo_title IS DISTINCT FROM $6
+			  OR seo_description IS DISTINCT FROM $7
+			THEN 1
+			ELSE 0
+		END
+		WHERE id = $12`,
+		input.Title,
+		nextSlug,
+		input.Excerpt,
+		input.ContentMD,
+		input.CoverMediaID,
+		input.SEOTitle,
+		input.SEODescription,
+		input.OGImageMediaID,
+		input.Featured,
+		normalizedTimePtr(input.PublishedAt),
+		now,
+		id,
+	)
+	if err != nil {
+		if isSlugUniqueViolation(err, "writings") {
+			return Writing{}, ErrSlugConflict
+		}
+		return Writing{}, err
+	}
+	if err := r.replaceWritingTags(ctx, tx, id, input.Tags); err != nil {
+		return Writing{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Writing{}, err
+	}
+	return r.GetWriting(ctx, id)
 }
 
 func (r *Repository) SetWritingStatus(ctx context.Context, id int64, status Status, publishedAt *time.Time) error {

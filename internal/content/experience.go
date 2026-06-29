@@ -70,6 +70,39 @@ func (r *Repository) GetExperience(ctx context.Context, id int64) (Experience, e
 	return experience, nil
 }
 
+func (r *Repository) UpdateExperience(ctx context.Context, id int64, input ExperienceInput) (Experience, error) {
+	now := normalizeTime(r.clock())
+	result, err := r.db.ExecContext(ctx, `UPDATE experiences SET period = $1, title = $2, organization = $3, description = $4, published_at = COALESCE($5, published_at), updated_at = $6,
+		translation_source_version = translation_source_version + CASE
+			WHEN period IS DISTINCT FROM $1
+			  OR title IS DISTINCT FROM $2
+			  OR organization IS DISTINCT FROM $3
+			  OR description IS DISTINCT FROM $4
+			THEN 1
+			ELSE 0
+		END
+		WHERE id = $7`,
+		input.Period,
+		input.Title,
+		input.Organization,
+		input.Description,
+		normalizedTimePtr(input.PublishedAt),
+		now,
+		id,
+	)
+	if err != nil {
+		return Experience{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Experience{}, err
+	}
+	if rowsAffected == 0 {
+		return Experience{}, ErrNotFound
+	}
+	return r.GetExperience(ctx, id)
+}
+
 func (r *Repository) SetExperienceStatus(ctx context.Context, id int64, status Status, publishedAt *time.Time) error {
 	return r.setRoutableStatus(ctx, "experiences", id, status, publishedAt)
 }

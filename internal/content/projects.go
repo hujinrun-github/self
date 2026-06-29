@@ -35,6 +35,8 @@ type Project struct {
 	Slug        string     `json:"slug"`
 	Summary     string     `json:"summary"`
 	ContentMD   string     `json:"content_md"`
+	DemoURL     string     `json:"demo_url"`
+	RepoURL     string     `json:"repo_url"`
 	Status      Status     `json:"status"`
 	Featured    bool       `json:"featured"`
 	SortOrder   int        `json:"sort_order"`
@@ -157,7 +159,18 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 	}
 
 	now := normalizeTime(r.clock())
-	_, err = tx.ExecContext(ctx, `UPDATE projects SET title = $1, slug = $2, summary = $3, content_md = $4, cover_media_id = $5, demo_url = $6, repo_url = $7, seo_title = $8, seo_description = $9, og_image_media_id = $10, featured = $11, published_at = COALESCE($12, published_at), updated_at = $13 WHERE id = $14`,
+	_, err = tx.ExecContext(ctx, `UPDATE projects SET title = $1, slug = $2, summary = $3, content_md = $4, cover_media_id = $5, demo_url = $6, repo_url = $7, seo_title = $8, seo_description = $9, og_image_media_id = $10, featured = $11, published_at = COALESCE($12, published_at), updated_at = $13,
+		translation_source_version = translation_source_version + CASE
+			WHEN title IS DISTINCT FROM $1
+			  OR slug IS DISTINCT FROM $2
+			  OR summary IS DISTINCT FROM $3
+			  OR content_md IS DISTINCT FROM $4
+			  OR seo_title IS DISTINCT FROM $8
+			  OR seo_description IS DISTINCT FROM $9
+			THEN 1
+			ELSE 0
+		END
+		WHERE id = $14`,
 		input.Title,
 		nextSlug,
 		input.Summary,
@@ -191,8 +204,8 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 func (r *Repository) GetProject(ctx context.Context, id int64) (Project, error) {
 	var project Project
 	var publishedAt sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, content_md, status, featured, sort_order, published_at FROM projects WHERE id = $1`, id).
-		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD, &project.Status, &project.Featured, &project.SortOrder, &publishedAt)
+	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, content_md, demo_url, repo_url, status, featured, sort_order, published_at FROM projects WHERE id = $1`, id).
+		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD, &project.DemoURL, &project.RepoURL, &project.Status, &project.Featured, &project.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
