@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if cfg.MediaBlobBackend == "hybrid" && (cfg.MinIOEndpoint == "" || cfg.MinIOAccessKey == "" || cfg.MinIOSecretKey == "" || cfg.MinIOBucket == "") {
+	if usesHybridBlobBackend(cfg.MediaBlobBackend) && (cfg.MinIOEndpoint == "" || cfg.MinIOAccessKey == "" || cfg.MinIOSecretKey == "" || cfg.MinIOBucket == "") {
 		log.Fatal("hybrid media backend requires MinIO configuration")
 	}
 	database, err := appdb.Open(cfg.DatabaseURL)
@@ -42,7 +42,7 @@ func main() {
 	}
 	localBlobStore := media.NewLocalBlobStore(cfg.UploadsDir)
 	var minioBlobStore media.BlobStore
-	if cfg.MediaBlobBackend == "hybrid" {
+	if usesHybridBlobBackend(cfg.MediaBlobBackend) {
 		minioBlobStore, err = media.NewMinIOBlobStore(media.MinIOConfig{
 			Endpoint:  cfg.MinIOEndpoint,
 			AccessKey: cfg.MinIOAccessKey,
@@ -54,9 +54,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if err := health.RunStartupChecks(context.Background(), cfg.MediaBlobBackend, func(ctx context.Context) error {
-		return media.CheckBlobStoreRoundTrip(ctx, minioBlobStore, "_healthchecks/startup")
-	}); err != nil {
+	startupBlobProbe := newBlobStoreProbe(cfg.MediaBlobBackend, minioBlobStore, "_healthchecks/startup")
+	if err := health.RunStartupChecks(context.Background(), cfg.MediaBlobBackend, startupBlobProbe); err != nil {
 		log.Fatal(err)
 	}
 	mediaService := media.NewService(database, cfg.UploadsDir, cfg.PrivateUploadsDir, localBlobStore, minioBlobStore)
@@ -100,9 +99,7 @@ func main() {
 		func(ctx context.Context) error {
 			return appdb.Ping(ctx, cfg.DatabaseURL)
 		},
-		func(ctx context.Context) error {
-			return media.CheckBlobStoreRoundTrip(ctx, minioBlobStore, "_healthchecks/http")
-		},
+		newBlobStoreProbe(cfg.MediaBlobBackend, minioBlobStore, "_healthchecks/http"),
 	)
 
 	r := buildRouter(routerOptions{

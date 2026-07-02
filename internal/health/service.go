@@ -4,16 +4,20 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"portfolio/internal/httpserver"
 )
 
 type Probe func(context.Context) error
 
+const serviceBlobProbeTimeout = 3 * time.Second
+
 type Service struct {
 	mediaBlobBackend string
 	dbProbe          Probe
 	blobProbe        Probe
+	blobProbeTimeout time.Duration
 }
 
 func NewService(mediaBlobBackend string, dbProbe Probe, blobProbe Probe) *Service {
@@ -21,6 +25,7 @@ func NewService(mediaBlobBackend string, dbProbe Probe, blobProbe Probe) *Servic
 		mediaBlobBackend: strings.TrimSpace(mediaBlobBackend),
 		dbProbe:          dbProbe,
 		blobProbe:        blobProbe,
+		blobProbeTimeout: serviceBlobProbeTimeout,
 	}
 }
 
@@ -41,11 +46,18 @@ func (s *Service) runChecks(ctx context.Context) error {
 	if err := s.dbProbe(ctx); err != nil {
 		return err
 	}
-	if !isHybridBackend(s.mediaBlobBackend) {
+	if !IsHybridBlobBackend(s.mediaBlobBackend) {
 		return nil
 	}
 	if s.blobProbe == nil {
 		return errMissingBlobProbe
 	}
-	return s.blobProbe(ctx)
+	return runProbeWithTimeout(ctx, s.blobProbe, s.probeTimeout())
+}
+
+func (s *Service) probeTimeout() time.Duration {
+	if s.blobProbeTimeout <= 0 {
+		return serviceBlobProbeTimeout
+	}
+	return s.blobProbeTimeout
 }
