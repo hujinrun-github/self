@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +14,7 @@ import (
 	"portfolio/internal/config"
 	"portfolio/internal/content"
 	appdb "portfolio/internal/db"
+	"portfolio/internal/health"
 	"portfolio/internal/httpserver"
 	"portfolio/internal/media"
 	"portfolio/internal/profile"
@@ -54,6 +54,11 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if err := health.RunStartupChecks(context.Background(), cfg.MediaBlobBackend, func(ctx context.Context) error {
+		return media.CheckBlobStoreRoundTrip(ctx, minioBlobStore, "_healthchecks/startup")
+	}); err != nil {
+		log.Fatal(err)
+	}
 	mediaService := media.NewService(database, cfg.UploadsDir, cfg.PrivateUploadsDir, localBlobStore, minioBlobStore)
 	if err := mediaService.CleanupPrivateUploads(context.Background(), 24*time.Hour); err != nil {
 		log.Printf("private upload cleanup failed: %v", err)
@@ -90,66 +95,73 @@ func main() {
 		indexHTML = []byte(`<!doctype html><html><head><title></title></head><body><div id="root"></div></body></html>`)
 	}
 
-	r := chi.NewRouter()
-	r.Use(httpserver.SecurityHeaders(strings.HasPrefix(cfg.PublicBaseURL, "https://")))
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			httpserver.SetCacheHeaders(w, req)
-			next.ServeHTTP(w, req)
-		})
-	})
+	healthService := health.NewService(
+		cfg.MediaBlobBackend,
+		func(ctx context.Context) error {
+			return appdb.Ping(ctx, cfg.DatabaseURL)
+		},
+		func(ctx context.Context) error {
+			return media.CheckBlobStoreRoundTrip(ctx, minioBlobStore, "_healthchecks/http")
+		},
+	)
 
-	authService.RegisterRoutes(r)
-	r.Group(func(adminRoutes chi.Router) {
-		adminRoutes.Use(authService.RequireAdmin)
-		profile.RegisterAdminRoutes(adminRoutes, profileRepo, translationService)
-		content.RegisterAdminRoutes(adminRoutes, contentRepo, translationService)
-		content.RegisterWritingImportRoutes(adminRoutes, importService)
-		media.RegisterAdminRoutes(adminRoutes, mediaService)
-	})
-
-	profile.RegisterSiteRoutes(r, profileRepo)
-	content.RegisterSiteRoutes(r, contentRepo)
-	site.RegisterRoutes(r, homeRepo)
-	media.RegisterPublicRoutes(r, mediaService)
-
-	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadsDir))))
-	r.Get("/sitemap.xml", func(w http.ResponseWriter, req *http.Request) {
-		body, err := site.GenerateSitemap(req.Context(), database, cfg.PublicBaseURL, time.Now().UTC())
-		if err != nil {
-			httpserver.WriteError(w, http.StatusInternalServerError, "internal_error", "Could not generate sitemap", nil)
-			return
-		}
-		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-		_, _ = w.Write(body)
-	})
-	r.Get("/robots.txt", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte(site.RobotsTxt(cfg.PublicBaseURL)))
-	})
-	r.With(authService.RequireAdmin).Get("/admin/preview/*", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
-		serveIndex(w, req, indexHTML, cfg)
-	})
-	r.Handle("/assets/*", http.StripPrefix("/", http.FileServer(http.Dir(distDir))))
-	r.Handle("/favicon.svg", http.FileServer(http.Dir(filepath.Join("web", "dist"))))
-	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
-		if target, ok := httpserver.CanonicalZhRedirect(req.URL.Path); ok {
-			http.Redirect(w, req, target, http.StatusPermanentRedirect)
-			return
-		}
-		serveIndex(w, req, indexHTML, cfg)
-	})
-	r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if target, ok := httpserver.CanonicalZhRedirect(req.URL.Path); ok {
-			if req.URL.RawQuery != "" {
-				target += "?" + req.URL.RawQuery
+	r := buildRouter(routerOptions{
+		publicBaseURL: cfg.PublicBaseURL,
+		healthHandler: healthService.Handler(),
+		authRoutes:    authService.RegisterRoutes,
+		requireAdmin:  authService.RequireAdmin,
+		adminRoutes: []routeRegistrar{
+			func(r chi.Router) {
+				profile.RegisterAdminRoutes(r, profileRepo, translationService)
+			},
+			func(r chi.Router) {
+				content.RegisterAdminRoutes(r, contentRepo, translationService)
+			},
+			func(r chi.Router) {
+				content.RegisterWritingImportRoutes(r, importService)
+			},
+			func(r chi.Router) {
+				media.RegisterAdminRoutes(r, mediaService)
+			},
+		},
+		publicRoutes: []routeRegistrar{
+			func(r chi.Router) {
+				profile.RegisterSiteRoutes(r, profileRepo)
+			},
+			func(r chi.Router) {
+				content.RegisterSiteRoutes(r, contentRepo)
+			},
+			func(r chi.Router) {
+				site.RegisterRoutes(r, homeRepo)
+			},
+			func(r chi.Router) {
+				media.RegisterPublicRoutes(r, mediaService)
+			},
+		},
+		uploadHandler: http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadsDir))),
+		sitemapHandler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			body, err := site.GenerateSitemap(req.Context(), database, cfg.PublicBaseURL, time.Now().UTC())
+			if err != nil {
+				httpserver.WriteError(w, http.StatusInternalServerError, "internal_error", "Could not generate sitemap", nil)
+				return
 			}
-			http.Redirect(w, req, target, http.StatusPermanentRedirect)
-			return
-		}
-		serveIndex(w, req, indexHTML, cfg)
-	}))
+			w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+			_, _ = w.Write(body)
+		}),
+		robotsHandler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte(site.RobotsTxt(cfg.PublicBaseURL)))
+		}),
+		adminPreviewHandler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+			serveIndex(w, req, indexHTML, cfg)
+		}),
+		assetsHandler:  http.StripPrefix("/", http.FileServer(http.Dir(distDir))),
+		faviconHandler: http.FileServer(http.Dir(filepath.Join("web", "dist"))),
+		spaHandler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			serveIndex(w, req, indexHTML, cfg)
+		}),
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
