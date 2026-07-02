@@ -16,7 +16,6 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-COPY --from=web-build /src/web/dist ./web/dist
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server
 
