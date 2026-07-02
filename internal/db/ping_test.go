@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 
@@ -50,6 +52,32 @@ func TestPingPreservesUnderlyingContextError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ping postgres:") {
 		t.Fatalf("pingDatabase error = %q, want ping prefix", err.Error())
+	}
+}
+
+func TestPingRedactsOrdinaryConnectionFailures(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
+	databaseURL := fmt.Sprintf("postgres://appuser:secret@%s/portfolio?sslmode=disable", addr)
+
+	err = Ping(context.Background(), databaseURL)
+	if err == nil {
+		t.Fatal("expected Ping to fail against a closed port")
+	}
+	if got := err.Error(); got != "ping postgres: connection failed" {
+		t.Fatalf("Ping error = %q, want %q", got, "ping postgres: connection failed")
+	}
+	for _, leaked := range []string{"appuser", "secret", "portfolio", "127.0.0.1", addr} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Fatalf("Ping leaked connection detail %q in error: %s", leaked, err)
+		}
 	}
 }
 

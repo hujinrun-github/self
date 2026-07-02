@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -51,10 +52,13 @@ func pingDatabase(ctx context.Context, database *sql.DB) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := database.PingContext(ctx); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("ping postgres: %w", err)
+		}
 		if strings.Contains(err.Error(), "cannot parse `") {
 			return fmt.Errorf("ping postgres: invalid database configuration")
 		}
-		return fmt.Errorf("ping postgres: %w", err)
+		return fmt.Errorf("ping postgres: connection failed")
 	}
 	return nil
 }
