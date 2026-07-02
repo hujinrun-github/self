@@ -372,9 +372,17 @@ func (s *Service) List(ctx context.Context, page int, limit int, query string) (
 	for rows.Next() {
 		var asset Asset
 		var rawVariants []byte
-		if err := rows.Scan(&asset.ID, &asset.FileName, &asset.StorageKey, &asset.MimeType, &asset.Width, &asset.Height, &rawVariants, &asset.Referenced); err != nil {
+		var width sql.NullInt64
+		var height sql.NullInt64
+		if err := rows.Scan(&asset.ID, &asset.FileName, &asset.StorageKey, &asset.MimeType, &width, &height, &rawVariants, &asset.Referenced); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if width.Valid {
+			asset.Width = int(width.Int64)
+		}
+		if height.Valid {
+			asset.Height = int(height.Int64)
 		}
 		if err := json.Unmarshal(rawVariants, &asset.Variants); err != nil {
 			rows.Close()

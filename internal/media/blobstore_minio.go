@@ -24,6 +24,8 @@ type MinIOBlobStore struct {
 	bucket string
 }
 
+var _ BlobStore = (*MinIOBlobStore)(nil)
+
 func NewMinIOBlobStore(cfg MinIOConfig) (BlobStore, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return nil, fmt.Errorf("minio endpoint is required")
