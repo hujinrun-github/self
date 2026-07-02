@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -17,6 +19,37 @@ func TestPingDoesNotCreateSchemaMigrations(t *testing.T) {
 
 	if tableExists(t, databaseURL, "schema_migrations") {
 		t.Fatal("Ping should not create schema_migrations")
+	}
+}
+
+func TestPingPreservesUnderlyingContextError(t *testing.T) {
+	databaseURL := openFreshPostgresDatabaseURL(t)
+	database, err := openDatabase(databaseURL)
+	if err != nil {
+		t.Fatalf("openDatabase: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Errorf("close database: %v", err)
+		}
+	})
+
+	if err := pingDatabase(context.Background(), database); err != nil {
+		t.Fatalf("warm pingDatabase: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = pingDatabase(ctx, database)
+	if err == nil {
+		t.Fatal("expected pingDatabase to fail with canceled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("pingDatabase error = %v, want wrapped context.Canceled", err)
+	}
+	if !strings.Contains(err.Error(), "ping postgres:") {
+		t.Fatalf("pingDatabase error = %q, want ping prefix", err.Error())
 	}
 }
 

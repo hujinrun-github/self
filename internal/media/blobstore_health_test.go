@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCheckBlobStoreRoundTrip(t *testing.T) {
@@ -63,13 +64,25 @@ func TestCheckBlobStoreRoundTrip(t *testing.T) {
 }
 
 func TestCheckBlobStoreRoundTripDeletesProbeOnOpenFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	openErr := errors.New("open boom")
+	deleteErr := errors.New("delete boom")
 	store := &probeBlobStore{
-		openErr: errors.New("boom"),
+		openErr:   openErr,
+		deleteErr: deleteErr,
 	}
 
-	err := CheckBlobStoreRoundTrip(context.Background(), store, "_healthchecks")
+	err := CheckBlobStoreRoundTrip(ctx, store, "_healthchecks")
 	if err == nil {
 		t.Fatal("expected CheckBlobStoreRoundTrip to fail")
+	}
+	if !errors.Is(err, openErr) {
+		t.Fatalf("error = %v, want wrapped open error", err)
+	}
+	if errors.Is(err, deleteErr) {
+		t.Fatalf("error = %v, did not expect delete error to replace primary error", err)
 	}
 	if len(store.putKeys) != 1 {
 		t.Fatalf("put count = %d, want 1", len(store.putKeys))
@@ -80,17 +93,27 @@ func TestCheckBlobStoreRoundTripDeletesProbeOnOpenFailure(t *testing.T) {
 	if store.putKeys[0] != store.deletedKeys[0] {
 		t.Fatalf("deleted key = %q, want %q", store.deletedKeys[0], store.putKeys[0])
 	}
+	assertDeleteCleanupContext(t, store)
 }
 
 func TestCheckBlobStoreRoundTripDeletesProbeOnReadFailure(t *testing.T) {
-	reader := &failingReadCloser{readErr: errors.New("boom")}
+	readErr := errors.New("read boom")
+	deleteErr := errors.New("delete boom")
+	reader := &failingReadCloser{readErr: readErr}
 	store := &probeBlobStore{
 		openReader: reader,
+		deleteErr:  deleteErr,
 	}
 
 	err := CheckBlobStoreRoundTrip(context.Background(), store, "_healthchecks")
 	if err == nil {
 		t.Fatal("expected CheckBlobStoreRoundTrip to fail")
+	}
+	if !errors.Is(err, readErr) {
+		t.Fatalf("error = %v, want wrapped read error", err)
+	}
+	if errors.Is(err, deleteErr) {
+		t.Fatalf("error = %v, did not expect delete error to replace primary error", err)
 	}
 	if len(store.putKeys) != 1 {
 		t.Fatalf("put count = %d, want 1", len(store.putKeys))
@@ -104,17 +127,37 @@ func TestCheckBlobStoreRoundTripDeletesProbeOnReadFailure(t *testing.T) {
 	if !reader.closed {
 		t.Fatal("expected failing reader to be closed")
 	}
+	assertDeleteCleanupContext(t, store)
+}
+
+func TestCheckBlobStoreRoundTripReturnsDeleteError(t *testing.T) {
+	deleteErr := errors.New("delete boom")
+	store := &probeBlobStore{
+		deleteErr: deleteErr,
+	}
+
+	err := CheckBlobStoreRoundTrip(context.Background(), store, "_healthchecks")
+	if err == nil {
+		t.Fatal("expected CheckBlobStoreRoundTrip to fail")
+	}
+	if !errors.Is(err, deleteErr) {
+		t.Fatalf("error = %v, want wrapped delete error", err)
+	}
+	assertDeleteCleanupContext(t, store)
 }
 
 type probeBlobStore struct {
-	putKeys     []string
-	openKeys    []string
-	deletedKeys []string
-	bodies      map[string][]byte
-	putBodies   map[string][]byte
-	openErr     error
-	openReader  io.ReadCloser
-	deleteErr   error
+	putKeys           []string
+	openKeys          []string
+	deletedKeys       []string
+	bodies            map[string][]byte
+	putBodies         map[string][]byte
+	openErr           error
+	openReader        io.ReadCloser
+	deleteErr         error
+	deleteCtxErr      error
+	deleteDeadline    time.Time
+	deleteHasDeadline bool
 }
 
 func (s *probeBlobStore) Put(_ context.Context, key string, reader io.Reader, _ string) error {
@@ -145,8 +188,10 @@ func (s *probeBlobStore) Open(_ context.Context, key string) (io.ReadCloser, err
 	return io.NopCloser(bytes.NewReader(s.bodies[key])), nil
 }
 
-func (s *probeBlobStore) Delete(_ context.Context, key string) error {
+func (s *probeBlobStore) Delete(ctx context.Context, key string) error {
 	s.deletedKeys = append(s.deletedKeys, key)
+	s.deleteCtxErr = ctx.Err()
+	s.deleteDeadline, s.deleteHasDeadline = ctx.Deadline()
 	delete(s.bodies, key)
 	return s.deleteErr
 }
@@ -163,4 +208,18 @@ func (r *failingReadCloser) Read([]byte) (int, error) {
 func (r *failingReadCloser) Close() error {
 	r.closed = true
 	return nil
+}
+
+func assertDeleteCleanupContext(t *testing.T, store *probeBlobStore) {
+	t.Helper()
+
+	if !store.deleteHasDeadline {
+		t.Fatal("expected cleanup delete context to have a deadline")
+	}
+	if store.deleteCtxErr != nil {
+		t.Fatalf("cleanup delete context err = %v, want nil", store.deleteCtxErr)
+	}
+	if remaining := time.Until(store.deleteDeadline); remaining <= 0 {
+		t.Fatalf("cleanup delete deadline should be in the future, remaining = %v", remaining)
+	}
 }

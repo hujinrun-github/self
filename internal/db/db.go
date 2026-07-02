@@ -51,7 +51,10 @@ func pingDatabase(ctx context.Context, database *sql.DB) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := database.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping postgres: connection failed")
+		if strings.Contains(err.Error(), "cannot parse `") {
+			return fmt.Errorf("ping postgres: invalid database configuration")
+		}
+		return fmt.Errorf("ping postgres: %w", err)
 	}
 	return nil
 }

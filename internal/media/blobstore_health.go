@@ -7,9 +7,12 @@ import (
 	"io"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const blobStoreCleanupTimeout = 2 * time.Second
 
 func CheckBlobStoreRoundTrip(ctx context.Context, store BlobStore, prefix string) (err error) {
 	key := path.Join(strings.TrimSpace(prefix), uuid.NewString()+".txt")
@@ -19,7 +22,10 @@ func CheckBlobStoreRoundTrip(ctx context.Context, store BlobStore, prefix string
 		return fmt.Errorf("put probe object: %w", err)
 	}
 	defer func() {
-		if deleteErr := store.Delete(context.Background(), key); deleteErr != nil && err == nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), blobStoreCleanupTimeout)
+		defer cancel()
+
+		if deleteErr := store.Delete(cleanupCtx, key); deleteErr != nil && err == nil {
 			err = fmt.Errorf("delete probe object: %w", deleteErr)
 		}
 	}()
