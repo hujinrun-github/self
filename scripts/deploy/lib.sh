@@ -6,6 +6,9 @@ trace_command() {
   if [[ -n "${TRACE_FILE:-}" ]]; then
     printf '%s\n' "$*" >>"$TRACE_FILE"
   fi
+  if is_true "${DRY_RUN:-0}"; then
+    printf '%s\n' "$*"
+  fi
 }
 
 is_true() {
@@ -68,9 +71,12 @@ resolve_release_type() {
     return 0
   fi
 
-  diff_output="$(
+  if ! diff_output="$(
     git -C "$repo" diff --name-only "$current_sha" "$target_sha" -- ':(glob)internal/db/migrations/*.sql'
-  )"
+  )"; then
+    echo "failed to diff migration files between $current_sha and $target_sha" >&2
+    return 1
+  fi
   if [[ -n "$diff_output" ]]; then
     migration_changed=1
   fi

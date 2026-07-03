@@ -135,10 +135,24 @@ test_wait_fallback_polls_health_when_wait_not_supported() {
   [[ "$up_line" -lt "$health_line" ]] || fail "expected health poll after non-wait compose up"
 }
 
+test_dry_run_prints_planned_steps() {
+  local app_dir trace_file output
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+  mkdir -p "$app_dir/runtime"
+  printf 'current-sha\n' > "$app_dir/runtime/.last_deployed_sha"
+
+  output="$(RELEASE_TYPE="app-only" run_remote_deploy "$app_dir" "$trace_file")"
+
+  [[ "$output" == *"git fetch --all --tags --prune"* ]] || fail "expected dry run to print git fetch"
+  [[ "$output" == *"docker compose up -d --remove-orphans --wait"* ]] || fail "expected dry run to print compose up"
+}
+
 main() {
   test_migration_release_stops_before_backup_and_pins_sha
   test_app_only_release_skips_backup_and_stop
   test_wait_fallback_polls_health_when_wait_not_supported
+  test_dry_run_prints_planned_steps
   echo "PASS: remote-deploy.sh contract tests passed"
 }
 

@@ -99,6 +99,14 @@ test_manual_app_only_rejects_migration_diff() {
   assert_contains "$output" "migration files changed" "override failure should explain migration diff"
 }
 
+test_release_type_rejects_invalid_current_sha() {
+  local output
+  if output="$(resolve_release_type "$FIXTURE_REPO" "missing-sha" "$APP_SHA" "auto" 2>&1)"; then
+    fail "expected invalid current sha to fail"
+  fi
+  assert_contains "$output" "failed to diff migration files" "invalid sha failure should mention diff failure"
+}
+
 test_render_env_file_maps_portfolio_prefix() {
   local target
   target="$(mktemp)"
@@ -158,6 +166,7 @@ main() {
   test_release_type_detects_app_only_diff
   test_release_type_defaults_to_migration_without_current_sha
   test_manual_app_only_rejects_migration_diff
+  test_release_type_rejects_invalid_current_sha
   test_render_env_file_maps_portfolio_prefix
   test_compose_supports_wait_detects_flag
   test_assert_port_owner_ok_allows_existing_portfolio_app
