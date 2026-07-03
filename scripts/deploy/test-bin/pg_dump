@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -n "${TRACE_FILE:-}" ]]; then
+  printf 'pg_dump %s\n' "$*" >>"$TRACE_FILE"
+fi
+
+exit 0

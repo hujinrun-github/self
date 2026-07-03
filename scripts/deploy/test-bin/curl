@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -n "${TRACE_FILE:-}" ]]; then
+  printf 'curl %s\n' "$*" >>"$TRACE_FILE"
+fi
+
+printf '%s\n' "${MOCK_CURL_BODY:-ok}"
+exit 0
