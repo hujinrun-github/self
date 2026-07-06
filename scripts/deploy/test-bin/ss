@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -n "${TRACE_FILE:-}" ]]; then
+  printf 'ss %s\n' "$*" >>"$TRACE_FILE"
+fi
+
+printf '%s\n' "${MOCK_SS_OUTPUT:-}"
+exit 0

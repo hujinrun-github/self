@@ -11,14 +11,17 @@ const (
 )
 
 var (
-	ErrEmptySlug      = errors.New("slug is required")
-	ErrReservedSlug   = errors.New("slug is reserved")
-	ErrSlugTooLong    = errors.New("slug is too long")
-	ErrImmutableSlug  = errors.New("published slug is immutable")
-	ErrInvalidStatus  = errors.New("invalid status")
-	ErrDeleteBlocked  = errors.New("only never-published drafts can be deleted")
-	ErrInvalidReorder = errors.New("reorder must include all resource ids")
-	ErrNotFound       = errors.New("content not found")
+	ErrEmptySlug           = errors.New("slug is required")
+	ErrReservedSlug        = errors.New("slug is reserved")
+	ErrSlugTooLong         = errors.New("slug is too long")
+	ErrSlugConflict        = errors.New("slug is already in use")
+	ErrConflict            = errors.New("content has changed")
+	ErrImmutableSlug       = errors.New("published slug is immutable")
+	ErrInvalidStatus       = errors.New("invalid status")
+	ErrDeleteBlocked       = errors.New("only never-published drafts can be deleted")
+	ErrInvalidReorder      = errors.New("reorder must include all resource ids")
+	ErrUnsafeMarkdownMedia = errors.New("markdown image references must use media assets instead of raw uploads paths")
+	ErrNotFound            = errors.New("content not found")
 )
 
 func validStatus(status Status) bool {

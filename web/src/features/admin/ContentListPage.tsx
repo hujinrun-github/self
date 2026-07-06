@@ -1,9 +1,11 @@
 import { Archive, ExternalLink, Plus, Rocket } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { APIRequestError, apiFetch } from "../../lib/api";
 import styles from "./Admin.module.css";
+import { contentStatusLabel } from "./adminI18n";
+import { WritingImportDialog } from "./WritingImportDialog";
 
 type Resource = "experience" | "projects" | "talks" | "writing";
 type Status = "archived" | "draft" | "published";
@@ -12,6 +14,7 @@ type AdminItem = {
   description?: string;
   event_name?: string;
   excerpt?: string;
+  featured?: boolean;
   id: number;
   organization?: string;
   period?: string;
@@ -24,9 +27,11 @@ type AdminItem = {
 
 export function ContentListPage({ resource }: { resource: string }) {
   const typedResource = resource as Resource;
+  const navigate = useNavigate();
   const [items, setItems] = useState<AdminItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +44,7 @@ export function ContentListPage({ resource }: { resource: string }) {
       })
       .catch((error) => {
         if (!cancelled) {
-          setMessage(error instanceof APIRequestError ? error.message : "Could not load content.");
+          setMessage(error instanceof APIRequestError ? error.message : "加载内容失败。");
         }
       })
       .finally(() => {
@@ -63,11 +68,12 @@ export function ContentListPage({ resource }: { resource: string }) {
         candidate.id === item.id ? { ...candidate, published_at: publishedAt, status } : candidate,
       ),
     );
-    setMessage(status === "published" ? "Published." : "Archived.");
+    setMessage(status === "published" ? "已发布。" : "已归档。");
   }
 
   const published = items.filter((item) => item.status === "published").length;
   const drafts = items.filter((item) => item.status === "draft").length;
+  const featured = items.filter((item) => item.featured).length;
 
   return (
     <section className={`${styles.panel} ${styles.stack}`}>
@@ -76,78 +82,102 @@ export function ContentListPage({ resource }: { resource: string }) {
           <h1>{titleFor(typedResource)}</h1>
           <p>{descriptionFor(typedResource)}</p>
         </div>
-        <Link className={`${styles.button} ${styles.primary}`} to={`/admin/${typedResource}/new`}>
-          <Plus aria-hidden="true" size={18} />
-          New
-        </Link>
+        <div className={styles.headerActions}>
+          {typedResource === "writing" ? (
+            <button className={styles.button} onClick={() => setShowImport(true)} type="button">
+              导入 Markdown
+            </button>
+          ) : null}
+          <Link className={`${styles.button} ${styles.primary}`} to={`/admin/${typedResource}/new`}>
+            <Plus aria-hidden="true" size={18} />
+            新建
+          </Link>
+        </div>
       </div>
 
-      <div className={styles.statsGrid}>
-        <Metric label="Total" value={items.length} />
-        <Metric label="Published" value={published} />
-        <Metric label="Drafts" value={drafts} />
+      <div className={styles.overviewGrid} data-testid="admin-overview-grid">
+        <article className={styles.overviewCard}>
+          <span className={styles.overviewLabel}>内容集合</span>
+          <strong className={styles.overviewValue}>{titleFor(typedResource)}</strong>
+          <p className={styles.overviewNote}>{descriptionFor(typedResource)}</p>
+        </article>
+        <Metric label="总条目" value={items.length} />
+        <Metric label="已发布" value={published} />
+        <Metric label={typedResource === "experience" ? "草稿" : "推荐位"} value={typedResource === "experience" ? drafts : featured} />
       </div>
 
       {message ? <p className={styles.message}>{message}</p> : null}
-      {loading ? <p className={styles.muted}>Loading content...</p> : null}
+      {loading ? <p className={styles.muted}>正在加载内容...</p> : null}
 
       {!loading && items.length === 0 ? (
         <div className={styles.emptyState}>
-          <h2>No entries yet</h2>
-          <p>Create the first {titleFor(typedResource).toLowerCase()} item and publish it when ready.</p>
+          <h2>还没有内容</h2>
+          <p>先创建第一条 {titleFor(typedResource)} 内容，准备好后再发布。</p>
           <Link className={`${styles.button} ${styles.primary}`} to={`/admin/${typedResource}/new`}>
             <Plus aria-hidden="true" size={18} />
-            Create entry
+            新建内容
           </Link>
         </div>
       ) : null}
 
       {items.length > 0 ? (
-        <div className={styles.list}>
-          {items.map((item) => (
-            <article className={styles.contentRow} key={item.id}>
-              <div>
-                <div className={styles.rowMeta}>
-                  <span className={`${styles.status} ${styles[`status${item.status}`]}`}>
-                    {item.status}
-                  </span>
-                  {item.published_at ? <span>{formatDate(item.published_at)}</span> : null}
-                  {item.period ? <span>{item.period}</span> : null}
+        <div className={`${styles.panel} ${styles.listPanel}`}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionIntro}>
+              <span className={styles.overviewLabel}>队列</span>
+              <h2>编辑队列</h2>
+              <p>最近编辑的内容会集中展示，方便继续发布、归档或前台查看。</p>
+            </div>
+          </div>
+          <div className={styles.list} data-testid="admin-content-list">
+            {items.map((item) => (
+              <article className={styles.contentRow} key={item.id}>
+                <div>
+                  <div className={styles.rowMeta}>
+                    <span className={`${styles.status} ${styles[`status${item.status}`]}`}>{contentStatusLabel(item.status)}</span>
+                    {item.published_at ? <span>{formatDate(item.published_at)}</span> : null}
+                    {item.period ? <span>{item.period}</span> : null}
+                  </div>
+                  <h2>{item.title}</h2>
+                  <p>{summaryFor(item)}</p>
                 </div>
-                <h2>{item.title}</h2>
-                <p>{summaryFor(item)}</p>
-              </div>
-              <div className={styles.rowActions}>
-                {publicURLFor(typedResource, item) ? (
-                  <Link className={styles.iconButton} to={publicURLFor(typedResource, item) ?? "/"}>
-                    <ExternalLink aria-hidden="true" size={17} />
-                    View
-                  </Link>
-                ) : null}
-                {item.status !== "published" ? (
-                  <button
-                    className={styles.iconButton}
-                    onClick={() => void setStatus(item, "published")}
-                    type="button"
-                  >
-                    <Rocket aria-hidden="true" size={17} />
-                    Publish
-                  </button>
-                ) : null}
-                {item.status !== "archived" ? (
-                  <button
-                    className={styles.iconButton}
-                    onClick={() => void setStatus(item, "archived")}
-                    type="button"
-                  >
-                    <Archive aria-hidden="true" size={17} />
-                    Archive
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
+                <div className={styles.rowActions}>
+                  {publicURLFor(typedResource, item) ? (
+                    <Link className={styles.iconButton} to={publicURLFor(typedResource, item) ?? "/"}>
+                      <ExternalLink aria-hidden="true" size={17} />
+                      查看
+                    </Link>
+                  ) : null}
+                  {item.status !== "published" ? (
+                    <button className={styles.iconButton} onClick={() => void setStatus(item, "published")} type="button">
+                      <Rocket aria-hidden="true" size={17} />
+                      发布
+                    </button>
+                  ) : null}
+                  {item.status !== "archived" ? (
+                    <button className={styles.iconButton} onClick={() => void setStatus(item, "archived")} type="button">
+                      <Archive aria-hidden="true" size={17} />
+                      归档
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
+      ) : null}
+
+      {typedResource === "writing" ? (
+        <WritingImportDialog
+          mode="create"
+          onClose={() => setShowImport(false)}
+          onCommitted={(writing) => {
+            setShowImport(false);
+            setMessage("Markdown 导入成功，已创建草稿。");
+            navigate(`/admin/writing/${writing.id}`);
+          }}
+          open={showImport}
+        />
       ) : null}
     </section>
   );
@@ -155,48 +185,48 @@ export function ContentListPage({ resource }: { resource: string }) {
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className={styles.metric}>
+    <article className={styles.metric}>
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
+    </article>
   );
 }
 
 function titleFor(resource: Resource) {
   if (resource === "projects") {
-    return "Projects";
+    return "项目";
   }
   if (resource === "writing") {
-    return "Writing";
+    return "写作";
   }
   if (resource === "talks") {
-    return "Talks";
+    return "演讲";
   }
-  return "Experience";
+  return "经历";
 }
 
 function descriptionFor(resource: Resource) {
   if (resource === "projects") {
-    return "Case studies, demos, repos, and featured project work.";
+    return "案例、演示、仓库与重点项目内容。";
   }
   if (resource === "writing") {
-    return "Articles and notes backed by rich Markdown editing.";
+    return "文章、随笔与带 Markdown 编辑体验的内容。";
   }
   if (resource === "talks") {
-    return "Conference talks, recordings, and event summaries.";
+    return "演讲信息、活动背景与视频相关内容。";
   }
-  return "Career timeline entries shown on the home page.";
+  return "首页展示的经历时间线、角色与阶段说明。";
 }
 
 function summaryFor(item: AdminItem) {
-  return item.summary || item.excerpt || item.description || item.organization || "No summary yet.";
+  return item.summary || item.excerpt || item.description || item.organization || "暂无摘要。";
 }
 
 function publicURLFor(resource: Resource, item: AdminItem) {
   if (resource === "experience" || item.status !== "published" || !item.slug) {
     return null;
   }
-  return `/${resource}/${item.slug}`;
+  return `/zh/${resource}/${item.slug}`;
 }
 
 function formatDate(value: string) {

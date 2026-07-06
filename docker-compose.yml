@@ -1,0 +1,26 @@
+services:
+  portfolio-app:
+    container_name: portfolio-app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+      UPLOADS_DIR: /app/data/uploads
+      PRIVATE_UPLOADS_DIR: /app/data/private_uploads
+    ports:
+      - "${PORT_HOST:-4300}:8080"
+    volumes:
+      - ./runtime/uploads:/app/data/uploads
+      - ./runtime/private_uploads:/app/data/private_uploads
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/api/health > /dev/null || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

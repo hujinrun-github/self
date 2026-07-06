@@ -35,6 +35,8 @@ type Project struct {
 	Slug        string     `json:"slug"`
 	Summary     string     `json:"summary"`
 	ContentMD   string     `json:"content_md"`
+	DemoURL     string     `json:"demo_url"`
+	RepoURL     string     `json:"repo_url"`
 	Status      Status     `json:"status"`
 	Featured    bool       `json:"featured"`
 	SortOrder   int        `json:"sort_order"`
@@ -53,22 +55,42 @@ func NewRepository(database *sql.DB) *Repository {
 }
 
 func (r *Repository) CreateProject(ctx context.Context, input ProjectInput) (Project, error) {
+	if err := validateMarkdownMedia(input.ContentMD); err != nil {
+		return Project{}, err
+	}
+	for attempt := 0; attempt < 10; attempt++ {
+		project, err := r.createProjectAttempt(ctx, input)
+		if err == nil {
+			return project, nil
+		}
+		if !isSlugUniqueViolation(err, "projects") {
+			return Project{}, err
+		}
+	}
+	return Project{}, ErrSlugConflict
+}
+
+func (r *Repository) createProjectAttempt(ctx context.Context, input ProjectInput) (Project, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Project{}, err
 	}
 	defer tx.Rollback()
 
+	if err := lockContentOrder(ctx, tx, "projects"); err != nil {
+		return Project{}, err
+	}
 	slug, err := r.uniqueSlug(ctx, tx, "projects", 0, chooseSlugInput(input.Slug, input.Title))
 	if err != nil {
 		return Project{}, err
 	}
-	now := formatTime(r.clock())
+	now := normalizeTime(r.clock())
 	sortOrder, err := nextSortOrder(ctx, tx, "projects")
 	if err != nil {
 		return Project{}, err
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO projects (title, slug, summary, content_md, cover_media_id, demo_url, repo_url, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO projects (title, slug, summary, content_md, cover_media_id, demo_url, repo_url, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
 		input.Title,
 		slug,
 		input.Summary,
@@ -80,16 +102,12 @@ func (r *Repository) CreateProject(ctx context.Context, input ProjectInput) (Pro
 		input.SEODescription,
 		input.OGImageMediaID,
 		StatusDraft,
-		boolInt(input.Featured),
+		input.Featured,
 		sortOrder,
-		timePtrString(input.PublishedAt),
+		normalizedTimePtr(input.PublishedAt),
 		now,
 		now,
-	)
-	if err != nil {
-		return Project{}, err
-	}
-	id, err := result.LastInsertId()
+	).Scan(&id)
 	if err != nil {
 		return Project{}, err
 	}
@@ -103,6 +121,9 @@ func (r *Repository) CreateProject(ctx context.Context, input ProjectInput) (Pro
 }
 
 func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectInput) (Project, error) {
+	if err := validateMarkdownMedia(input.ContentMD); err != nil {
+		return Project{}, err
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Project{}, err
@@ -111,7 +132,7 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 
 	var currentSlug string
 	var status Status
-	if err := tx.QueryRowContext(ctx, `SELECT slug, status FROM projects WHERE id = ?`, id).Scan(&currentSlug, &status); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT slug, status FROM projects WHERE id = $1`, id).Scan(&currentSlug, &status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
@@ -137,8 +158,19 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 		}
 	}
 
-	now := formatTime(r.clock())
-	_, err = tx.ExecContext(ctx, `UPDATE projects SET title = ?, slug = ?, summary = ?, content_md = ?, cover_media_id = ?, demo_url = ?, repo_url = ?, seo_title = ?, seo_description = ?, og_image_media_id = ?, featured = ?, published_at = COALESCE(?, published_at), updated_at = ? WHERE id = ?`,
+	now := normalizeTime(r.clock())
+	_, err = tx.ExecContext(ctx, `UPDATE projects SET title = $1, slug = $2, summary = $3, content_md = $4, cover_media_id = $5, demo_url = $6, repo_url = $7, seo_title = $8, seo_description = $9, og_image_media_id = $10, featured = $11, published_at = COALESCE($12, published_at), updated_at = $13,
+		translation_source_version = translation_source_version + CASE
+			WHEN title IS DISTINCT FROM $1
+			  OR slug IS DISTINCT FROM $2
+			  OR summary IS DISTINCT FROM $3
+			  OR content_md IS DISTINCT FROM $4
+			  OR seo_title IS DISTINCT FROM $8
+			  OR seo_description IS DISTINCT FROM $9
+			THEN 1
+			ELSE 0
+		END
+		WHERE id = $14`,
 		input.Title,
 		nextSlug,
 		input.Summary,
@@ -149,12 +181,15 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 		input.SEOTitle,
 		input.SEODescription,
 		input.OGImageMediaID,
-		boolInt(input.Featured),
-		timePtrString(input.PublishedAt),
+		input.Featured,
+		normalizedTimePtr(input.PublishedAt),
 		now,
 		id,
 	)
 	if err != nil {
+		if isSlugUniqueViolation(err, "projects") {
+			return Project{}, ErrSlugConflict
+		}
 		return Project{}, err
 	}
 	if err := r.replaceProjectTechs(ctx, tx, id, input.Techs); err != nil {
@@ -168,23 +203,18 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 
 func (r *Repository) GetProject(ctx context.Context, id int64) (Project, error) {
 	var project Project
-	var publishedAt sql.NullString
-	var featured int
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, content_md, status, featured, sort_order, published_at FROM projects WHERE id = ?`, id).
-		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD, &project.Status, &featured, &project.SortOrder, &publishedAt)
+	var publishedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, content_md, demo_url, repo_url, status, featured, sort_order, published_at FROM projects WHERE id = $1`, id).
+		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD, &project.DemoURL, &project.RepoURL, &project.Status, &project.Featured, &project.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
 		return Project{}, err
 	}
-	project.Featured = featured == 1
 	if publishedAt.Valid {
-		parsed, err := parseTime(publishedAt.String)
-		if err != nil {
-			return Project{}, err
-		}
-		project.PublishedAt = &parsed
+		value := normalizeTime(publishedAt.Time)
+		project.PublishedAt = &value
 	}
 	techs, err := r.projectTechs(ctx, id)
 	if err != nil {
@@ -199,9 +229,15 @@ func (r *Repository) SetProjectStatus(ctx context.Context, id int64, status Stat
 }
 
 func (r *Repository) DeleteProject(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var status Status
-	var publishedAt sql.NullString
-	if err := r.db.QueryRowContext(ctx, `SELECT status, published_at FROM projects WHERE id = ?`, id).Scan(&status, &publishedAt); err != nil {
+	var publishedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT status, published_at FROM projects WHERE id = $1 FOR UPDATE`, id).Scan(&status, &publishedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -210,15 +246,20 @@ func (r *Repository) DeleteProject(ctx context.Context, id int64) error {
 	if status != StatusDraft || publishedAt.Valid {
 		return ErrDeleteBlocked
 	}
-	_, err := r.db.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id)
-	return err
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_references WHERE resource_type = $1 AND resource_id = $2`, "project", id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE id = $1`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) PublicProjects(ctx context.Context, limit int) ([]Project, error) {
 	if limit <= 0 {
 		limit = 12
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM projects WHERE status = ? AND published_at <= ? ORDER BY published_at DESC, sort_order ASC LIMIT ?`, StatusPublished, formatTime(r.clock()), limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id FROM projects WHERE status = $1 AND published_at <= $2 ORDER BY published_at DESC, sort_order ASC LIMIT $3`, StatusPublished, normalizeTime(r.clock()), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +296,9 @@ func (r *Repository) ReorderProjects(ctx context.Context, orderedIDs []int64) er
 }
 
 func (r *Repository) uniqueSlug(ctx context.Context, tx *sql.Tx, table string, excludeID int64, input string) (string, error) {
+	if !slugTableAllowed(table) {
+		return "", fmt.Errorf("unknown slug table %s", table)
+	}
 	base, err := Slugify(input)
 	if err != nil {
 		return "", err
@@ -262,7 +306,7 @@ func (r *Repository) uniqueSlug(ctx context.Context, tx *sql.Tx, table string, e
 	candidate := base
 	for suffix := 2; ; suffix++ {
 		var count int
-		query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE slug = ? AND id <> ?`, table)
+		query := fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE slug = $1 AND id <> $2`, table)
 		if err := tx.QueryRowContext(ctx, query, candidate, excludeID).Scan(&count); err != nil {
 			return "", err
 		}
@@ -276,16 +320,18 @@ func (r *Repository) uniqueSlug(ctx context.Context, tx *sql.Tx, table string, e
 	}
 }
 
+func slugTableAllowed(table string) bool {
+	switch table {
+	case "projects", "writings", "talks":
+		return true
+	default:
+		return false
+	}
+}
+
 func chooseSlugInput(slug string, title string) string {
 	if slug != "" {
 		return slug
 	}
 	return title
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

@@ -6,8 +6,9 @@ import type { MediaVariant } from "../../lib/types";
 import styles from "./Admin.module.css";
 
 type MediaItem = {
-  id: number;
   file_name: string;
+  id: number;
+  mime_type?: string;
   referenced: boolean;
   variants: Record<string, MediaVariant>;
 };
@@ -33,7 +34,7 @@ export function MediaPage() {
   async function deleteItem(item: MediaItem) {
     await apiFetch(`/api/admin/media/${item.id}`, { method: "DELETE" });
     setItems(items.filter((candidate) => candidate.id !== item.id));
-    setMessage("Media deleted");
+    setMessage("媒体已删除。");
   }
 
   async function uploadFile(file: File) {
@@ -47,9 +48,9 @@ export function MediaPage() {
         method: "POST",
       });
       setItems((current) => [uploaded, ...current]);
-      setMessage("Media uploaded");
+      setMessage("媒体已上传。");
     } catch (error) {
-      setMessage(error instanceof APIRequestError ? error.message : "Upload failed");
+      setMessage(error instanceof APIRequestError ? error.message : "上传失败");
     } finally {
       setUploading(false);
       if (fileInput.current) {
@@ -62,8 +63,8 @@ export function MediaPage() {
     <section className={`${styles.panel} ${styles.stack}`}>
       <div className={styles.pageHeader}>
         <div>
-          <h1>Media</h1>
-          <p>Upload images, copy asset references, and clean up unused files.</p>
+          <h1>媒体</h1>
+          <p>上传图片素材、复制引用地址，并清理未使用的文件。</p>
         </div>
         <button
           className={`${styles.button} ${styles.primary}`}
@@ -72,11 +73,30 @@ export function MediaPage() {
           type="button"
         >
           <Upload aria-hidden="true" size={18} />
-          {uploading ? "Uploading..." : "Upload"}
+          {uploading ? "上传中..." : "上传"}
         </button>
       </div>
+      <div className={styles.overviewGrid}>
+        <article className={styles.overviewCard}>
+          <span className={styles.overviewLabel}>素材流转</span>
+          <strong className={styles.overviewValue}>共享媒体库</strong>
+          <p className={styles.overviewNote}>素材上传一次后，可在写作、项目和资料内容里统一复用。</p>
+        </article>
+        <article className={styles.metric}>
+          <span>素材总数</span>
+          <strong>{items.length}</strong>
+        </article>
+        <article className={styles.metric}>
+          <span>已引用</span>
+          <strong>{items.filter((item) => item.referenced).length}</strong>
+        </article>
+        <article className={styles.metric}>
+          <span>未使用</span>
+          <strong>{items.filter((item) => !item.referenced).length}</strong>
+        </article>
+      </div>
       <input
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/mp4,audio/ogg,video/mp4,video/quicktime,video/webm"
         className={styles.hiddenInput}
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -90,17 +110,18 @@ export function MediaPage() {
       {message ? <p className={styles.message}>{message}</p> : null}
       {items.length === 0 ? (
         <div className={styles.emptyState}>
-          <h2>No media yet</h2>
-          <p>Upload a cover image, then reference it from Markdown as a media asset.</p>
+          <h2>还没有媒体素材</h2>
+          <p>先上传封面图或配图，再在 Markdown 中按媒体资源引用。</p>
         </div>
       ) : (
         <div className={styles.mediaGrid}>
           {items.map((item) => {
+            const kind = mediaKind(item);
             const card = item.variants.card;
-            const markdownRef = `![${item.file_name}](media://asset/${item.id}/card)`;
+            const markdownRef = mediaReference(item, kind);
             return (
               <article className={styles.mediaCard} key={item.id}>
-                {card ? (
+                {kind === "image" && card ? (
                   <img
                     alt=""
                     className={styles.thumb}
@@ -109,22 +130,25 @@ export function MediaPage() {
                     width={card.width}
                   />
                 ) : (
-                  <div className={styles.thumb} />
+                  <div className={`${styles.thumb} ${styles.mediaPlaceholder}`}>
+                    <strong>{kind === "audio" ? "AUDIO" : "VIDEO"}</strong>
+                    <span>{item.mime_type}</span>
+                  </div>
                 )}
                 <div className={styles.mediaBody}>
                   <strong>{item.file_name}</strong>
-                  <span>{item.referenced ? "Referenced" : "Unused"}</span>
+                  <span>{item.referenced ? "已引用" : "未使用"}</span>
                   <code>{markdownRef}</code>
                 </div>
                 <button
-                  aria-label={`Delete ${item.file_name}`}
+                  aria-label={`删除 ${item.file_name}`}
                   className={`${styles.iconButton} ${styles.danger}`}
                   disabled={item.referenced}
                   onClick={() => void deleteItem(item)}
                   type="button"
                 >
                   <Trash2 aria-hidden="true" size={17} />
-                  Delete
+                  删除
                 </button>
               </article>
             );
@@ -133,4 +157,22 @@ export function MediaPage() {
       )}
     </section>
   );
+}
+
+function mediaKind(item: MediaItem) {
+  const mimeType = item.mime_type || item.variants.original?.mime_type || item.variants.card?.mime_type || "";
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+  return "image";
+}
+
+function mediaReference(item: MediaItem, kind: "audio" | "image" | "video") {
+  if (kind === "image") {
+    return `![${item.file_name}](media://asset/${item.id}/card)`;
+  }
+  return `[${item.file_name}](media://asset/${item.id}/original)`;
 }

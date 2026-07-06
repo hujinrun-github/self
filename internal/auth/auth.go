@@ -14,7 +14,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"portfolio/internal/config"
+	"portfolio/internal/storage"
 )
+
+const bootstrapAdminLockKey int64 = 710203992
 
 type Service struct {
 	db      *sql.DB
@@ -33,23 +36,48 @@ func NewService(database *sql.DB, cfg config.Config) *Service {
 }
 
 func (s *Service) BootstrapAdmin(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, bootstrapAdminLockKey); err != nil {
+		return err
+	}
+
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM admins`).Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admins`).Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
 		if s.cfg.AdminPassword != "" && strings.HasPrefix(s.cfg.PublicBaseURL, "https://") {
 			log.Printf("warning: ADMIN_PASSWORD remains set after admin bootstrap")
 		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		committed = true
 		return nil
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(s.cfg.AdminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	now := formatTime(s.clock())
-	_, err = s.db.ExecContext(ctx, `INSERT INTO admins (email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)`, s.cfg.AdminEmail, string(hash), now, now)
-	return err
+	now := storage.NormalizeTime(s.clock())
+	if _, err := tx.ExecContext(ctx, `INSERT INTO admins (email, password_hash, created_at, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING`, s.cfg.AdminEmail, string(hash), now, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func (s *Service) Routes() http.Handler {
@@ -161,7 +189,7 @@ func (s *Service) handleCSRF(w http.ResponseWriter, r *http.Request) {
 func (s *Service) lookupAdmin(ctx context.Context, email string) (int64, string, error) {
 	var id int64
 	var passwordHash string
-	err := s.db.QueryRowContext(ctx, `SELECT id, password_hash FROM admins WHERE email = ?`, strings.TrimSpace(email)).Scan(&id, &passwordHash)
+	err := s.db.QueryRowContext(ctx, `SELECT id, password_hash FROM admins WHERE email = $1`, strings.TrimSpace(email)).Scan(&id, &passwordHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", err
 	}

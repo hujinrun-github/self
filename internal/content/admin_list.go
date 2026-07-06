@@ -73,7 +73,7 @@ func (r *Repository) listContentIDs(ctx context.Context, table string, limit int
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	query := fmt.Sprintf(`SELECT id FROM %s ORDER BY CASE status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END, sort_order ASC, id DESC LIMIT ?`, table)
+	query := listContentIDsQuery(table)
 	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, err
@@ -89,4 +89,11 @@ func (r *Repository) listContentIDs(ctx context.Context, table string, limit int
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func listContentIDsQuery(table string) string {
+	return fmt.Sprintf(
+		`SELECT id FROM %s ORDER BY CASE status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END, sort_order ASC, id DESC LIMIT $1`,
+		table,
+	)
 }

@@ -32,17 +32,17 @@ func (r *Repository) CreateExperience(ctx context.Context, input ExperienceInput
 		return Experience{}, err
 	}
 	defer tx.Rollback()
+	if err := lockContentOrder(ctx, tx, "experiences"); err != nil {
+		return Experience{}, err
+	}
 	sortOrder, err := nextSortOrder(ctx, tx, "experiences")
 	if err != nil {
 		return Experience{}, err
 	}
-	now := formatTime(r.clock())
-	result, err := tx.ExecContext(ctx, `INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		input.Period, input.Title, input.Organization, input.Description, StatusDraft, sortOrder, timePtrString(input.PublishedAt), now, now)
-	if err != nil {
-		return Experience{}, err
-	}
-	id, err := result.LastInsertId()
+	now := normalizeTime(r.clock())
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+		input.Period, input.Title, input.Organization, input.Description, StatusDraft, sortOrder, normalizedTimePtr(input.PublishedAt), now, now).Scan(&id)
 	if err != nil {
 		return Experience{}, err
 	}
@@ -54,8 +54,8 @@ func (r *Repository) CreateExperience(ctx context.Context, input ExperienceInput
 
 func (r *Repository) GetExperience(ctx context.Context, id int64) (Experience, error) {
 	var experience Experience
-	var publishedAt sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT id, period, title, organization, description, status, sort_order, published_at FROM experiences WHERE id = ?`, id).
+	var publishedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT id, period, title, organization, description, status, sort_order, published_at FROM experiences WHERE id = $1`, id).
 		Scan(&experience.ID, &experience.Period, &experience.Title, &experience.Organization, &experience.Description, &experience.Status, &experience.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -64,13 +64,43 @@ func (r *Repository) GetExperience(ctx context.Context, id int64) (Experience, e
 		return Experience{}, err
 	}
 	if publishedAt.Valid {
-		parsed, err := parseTime(publishedAt.String)
-		if err != nil {
-			return Experience{}, err
-		}
-		experience.PublishedAt = &parsed
+		value := normalizeTime(publishedAt.Time)
+		experience.PublishedAt = &value
 	}
 	return experience, nil
+}
+
+func (r *Repository) UpdateExperience(ctx context.Context, id int64, input ExperienceInput) (Experience, error) {
+	now := normalizeTime(r.clock())
+	result, err := r.db.ExecContext(ctx, `UPDATE experiences SET period = $1, title = $2, organization = $3, description = $4, published_at = COALESCE($5, published_at), updated_at = $6,
+		translation_source_version = translation_source_version + CASE
+			WHEN period IS DISTINCT FROM $1
+			  OR title IS DISTINCT FROM $2
+			  OR organization IS DISTINCT FROM $3
+			  OR description IS DISTINCT FROM $4
+			THEN 1
+			ELSE 0
+		END
+		WHERE id = $7`,
+		input.Period,
+		input.Title,
+		input.Organization,
+		input.Description,
+		normalizedTimePtr(input.PublishedAt),
+		now,
+		id,
+	)
+	if err != nil {
+		return Experience{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Experience{}, err
+	}
+	if rowsAffected == 0 {
+		return Experience{}, ErrNotFound
+	}
+	return r.GetExperience(ctx, id)
 }
 
 func (r *Repository) SetExperienceStatus(ctx context.Context, id int64, status Status, publishedAt *time.Time) error {

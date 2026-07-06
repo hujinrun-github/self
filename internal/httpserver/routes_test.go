@@ -26,7 +26,9 @@ func TestRoutePriorityBeforeSPAFallback(t *testing.T) {
 		"/sitemap.xml":           "sitemap",
 		"/robots.txt":            "robots",
 		"/admin/preview/project": "preview",
-		"/projects/example":      "spa",
+		"/admin/profile":         "spa",
+		"/en/projects/example":   "spa",
+		"/zh/projects/example":   "spa",
 	}
 	for path, want := range cases {
 		t.Run(path, func(t *testing.T) {
@@ -34,6 +36,39 @@ func TestRoutePriorityBeforeSPAFallback(t *testing.T) {
 			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 			if got := recorder.Body.String(); got != want {
 				t.Fatalf("body = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestRedirectsLegacyAndUnsupportedLocalePathsToZh(t *testing.T) {
+	router := NewRouter(RouterOptions{
+		ReactFallback: http.HandlerFunc(writeText("spa")),
+	})
+
+	cases := map[string]string{
+		"/":               "/zh",
+		"/fr":             "/zh",
+		"/projects":       "/zh/projects",
+		"/writing/sample": "/zh/writing/sample",
+		"/talks":          "/zh",
+		"/talks/sample":   "/zh",
+		"/en/talks":       "/en",
+		"/ja/talks/demo":  "/ja",
+		"/bio":            "/zh/bio",
+		"/contact":        "/zh/contact",
+		"/fr/projects":    "/zh/projects",
+	}
+
+	for path, want := range cases {
+		t.Run(path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+			if recorder.Code != http.StatusPermanentRedirect {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusPermanentRedirect)
+			}
+			if got := recorder.Header().Get("Location"); got != want {
+				t.Fatalf("location = %q, want %q", got, want)
 			}
 		})
 	}

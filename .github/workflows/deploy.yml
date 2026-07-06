@@ -1,0 +1,139 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Release classification override for the remote deploy script
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - app-only
+          - migration
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.4"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm --prefix web ci
+
+      - name: Run Go tests
+        run: go test ./cmd/server ./internal/config ./internal/db ./internal/httpserver ./internal/auth ./internal/site ./internal/profile ./internal/content ./internal/media ./internal/backup ./cmd/migrate-sqlite-to-postgres -count=1
+
+      - name: Run web tests
+        run: npm --prefix web test -- --run
+
+      - name: Build web app
+        run: npm --prefix web run build
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: portfolio-production
+    env:
+      GITHUB_SHA: ${{ github.sha }}
+      RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'auto' }}
+      PORTFOLIO_APP_DIR: ${{ vars.PORTFOLIO_APP_DIR }}
+      PORTFOLIO_APP_ORIGIN: ${{ vars.PORTFOLIO_APP_ORIGIN }}
+      PORTFOLIO_APP_ORIGINS: ${{ vars.PORTFOLIO_APP_ORIGINS }}
+      PORTFOLIO_PUBLIC_BASE_URL: ${{ vars.PORTFOLIO_PUBLIC_BASE_URL }}
+      PORTFOLIO_SITE_NAME: ${{ vars.PORTFOLIO_SITE_NAME }}
+      PORTFOLIO_ADMIN_EMAIL: ${{ vars.PORTFOLIO_ADMIN_EMAIL }}
+      PORTFOLIO_MEDIA_BLOB_BACKEND: ${{ vars.PORTFOLIO_MEDIA_BLOB_BACKEND }}
+      PORTFOLIO_MINIO_ENDPOINT: ${{ vars.PORTFOLIO_MINIO_ENDPOINT }}
+      PORTFOLIO_MINIO_BUCKET: ${{ vars.PORTFOLIO_MINIO_BUCKET }}
+      PORTFOLIO_MINIO_USE_SSL: ${{ vars.PORTFOLIO_MINIO_USE_SSL }}
+      PORTFOLIO_TRANSLATION_PROVIDER: ${{ vars.PORTFOLIO_TRANSLATION_PROVIDER }}
+      PORTFOLIO_TRANSLATION_BASE_URL: ${{ vars.PORTFOLIO_TRANSLATION_BASE_URL }}
+      PORTFOLIO_TRANSLATION_MODEL: ${{ vars.PORTFOLIO_TRANSLATION_MODEL }}
+      PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS: ${{ vars.PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS }}
+      PORTFOLIO_PORT_HOST: ${{ vars.PORTFOLIO_PORT_HOST }}
+      PORTFOLIO_DATABASE_URL: ${{ secrets.PORTFOLIO_DATABASE_URL }}
+      PORTFOLIO_DB_USER: ${{ secrets.PORTFOLIO_DB_USER }}
+      PORTFOLIO_DB_PASSWORD: ${{ secrets.PORTFOLIO_DB_PASSWORD }}
+      PORTFOLIO_ADMIN_PASSWORD: ${{ secrets.PORTFOLIO_ADMIN_PASSWORD }}
+      PORTFOLIO_SESSION_SECRET: ${{ secrets.PORTFOLIO_SESSION_SECRET }}
+      PORTFOLIO_MINIO_ACCESS_KEY: ${{ secrets.PORTFOLIO_MINIO_ACCESS_KEY }}
+      PORTFOLIO_MINIO_SECRET_KEY: ${{ secrets.PORTFOLIO_MINIO_SECRET_KEY }}
+      PORTFOLIO_TRANSLATION_API_KEY: ${{ secrets.PORTFOLIO_TRANSLATION_API_KEY }}
+    steps:
+      - name: Execute remote deploy
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_SHA: ${{ env.GITHUB_SHA }}
+          RELEASE_TYPE: ${{ env.RELEASE_TYPE }}
+          PORTFOLIO_APP_DIR: ${{ env.PORTFOLIO_APP_DIR }}
+          PORTFOLIO_APP_ORIGIN: ${{ env.PORTFOLIO_APP_ORIGIN }}
+          PORTFOLIO_APP_ORIGINS: ${{ env.PORTFOLIO_APP_ORIGINS }}
+          PORTFOLIO_PUBLIC_BASE_URL: ${{ env.PORTFOLIO_PUBLIC_BASE_URL }}
+          PORTFOLIO_SITE_NAME: ${{ env.PORTFOLIO_SITE_NAME }}
+          PORTFOLIO_ADMIN_EMAIL: ${{ env.PORTFOLIO_ADMIN_EMAIL }}
+          PORTFOLIO_MEDIA_BLOB_BACKEND: ${{ env.PORTFOLIO_MEDIA_BLOB_BACKEND }}
+          PORTFOLIO_MINIO_ENDPOINT: ${{ env.PORTFOLIO_MINIO_ENDPOINT }}
+          PORTFOLIO_MINIO_BUCKET: ${{ env.PORTFOLIO_MINIO_BUCKET }}
+          PORTFOLIO_MINIO_USE_SSL: ${{ env.PORTFOLIO_MINIO_USE_SSL }}
+          PORTFOLIO_TRANSLATION_PROVIDER: ${{ env.PORTFOLIO_TRANSLATION_PROVIDER }}
+          PORTFOLIO_TRANSLATION_BASE_URL: ${{ env.PORTFOLIO_TRANSLATION_BASE_URL }}
+          PORTFOLIO_TRANSLATION_MODEL: ${{ env.PORTFOLIO_TRANSLATION_MODEL }}
+          PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS: ${{ env.PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS }}
+          PORTFOLIO_PORT_HOST: ${{ env.PORTFOLIO_PORT_HOST }}
+          PORTFOLIO_DATABASE_URL: ${{ env.PORTFOLIO_DATABASE_URL }}
+          PORTFOLIO_DB_USER: ${{ env.PORTFOLIO_DB_USER }}
+          PORTFOLIO_DB_PASSWORD: ${{ env.PORTFOLIO_DB_PASSWORD }}
+          PORTFOLIO_ADMIN_PASSWORD: ${{ env.PORTFOLIO_ADMIN_PASSWORD }}
+          PORTFOLIO_SESSION_SECRET: ${{ env.PORTFOLIO_SESSION_SECRET }}
+          PORTFOLIO_MINIO_ACCESS_KEY: ${{ env.PORTFOLIO_MINIO_ACCESS_KEY }}
+          PORTFOLIO_MINIO_SECRET_KEY: ${{ env.PORTFOLIO_MINIO_SECRET_KEY }}
+          PORTFOLIO_TRANSLATION_API_KEY: ${{ env.PORTFOLIO_TRANSLATION_API_KEY }}
+        with:
+          host: ${{ secrets.PORTFOLIO_SSH_HOST }}
+          username: ${{ secrets.PORTFOLIO_SSH_USER }}
+          key: ${{ secrets.PORTFOLIO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORTFOLIO_SSH_PORT }}
+          script_stop: true
+          envs: GITHUB_SHA,RELEASE_TYPE,PORTFOLIO_APP_DIR,PORTFOLIO_APP_ORIGIN,PORTFOLIO_APP_ORIGINS,PORTFOLIO_PUBLIC_BASE_URL,PORTFOLIO_SITE_NAME,PORTFOLIO_ADMIN_EMAIL,PORTFOLIO_MEDIA_BLOB_BACKEND,PORTFOLIO_MINIO_ENDPOINT,PORTFOLIO_MINIO_BUCKET,PORTFOLIO_MINIO_USE_SSL,PORTFOLIO_TRANSLATION_PROVIDER,PORTFOLIO_TRANSLATION_BASE_URL,PORTFOLIO_TRANSLATION_MODEL,PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS,PORTFOLIO_PORT_HOST,PORTFOLIO_DATABASE_URL,PORTFOLIO_DB_USER,PORTFOLIO_DB_PASSWORD,PORTFOLIO_ADMIN_PASSWORD,PORTFOLIO_SESSION_SECRET,PORTFOLIO_MINIO_ACCESS_KEY,PORTFOLIO_MINIO_SECRET_KEY,PORTFOLIO_TRANSLATION_API_KEY
+          script: |
+            set -euo pipefail
+            cd "$PORTFOLIO_APP_DIR"
+            # remote-deploy.sh pins the release with: git checkout --detach "$GITHUB_SHA"
+            bash scripts/deploy/remote-deploy.sh

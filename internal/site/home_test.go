@@ -1,19 +1,15 @@
 package site
 
 import (
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
-	appdb "portfolio/internal/db"
+	dbtest "portfolio/internal/testutil/postgres"
 )
 
 func TestHomeBackfillsFeaturedWithRecentPublishedContent(t *testing.T) {
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	database, _ := dbtest.OpenPostgres(t)
 	defer database.Close()
 
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
@@ -49,10 +45,7 @@ func TestHomeBackfillsFeaturedWithRecentPublishedContent(t *testing.T) {
 }
 
 func TestHomeReturnsEmptyArrays(t *testing.T) {
-	database, err := appdb.Open(filepath.Join(t.TempDir(), "portfolio.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	database, _ := dbtest.OpenPostgres(t)
 	defer database.Close()
 
 	repo := NewHomeRepository(database, func() time.Time { return time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC) })
@@ -68,76 +61,76 @@ func TestHomeReturnsEmptyArrays(t *testing.T) {
 func seedHomeRows(t *testing.T, repo *HomeRepository, now time.Time) {
 	t.Helper()
 	for i := 1; i <= 6; i++ {
-		_, err := repo.db.Exec(`INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES (?, ?, '', '', 'published', ?, ?, ?, ?)`,
+		_, err := repo.db.Exec(`INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, '', '', 'published', $3, $4, $5, $6)`,
 			"2026",
 			"Experience",
 			i*10,
-			now.Add(-time.Duration(i)*time.Hour).Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
+			now.Add(-time.Duration(i)*time.Hour),
+			now,
+			now,
 		)
 		if err != nil {
 			t.Fatalf("seed experience: %v", err)
 		}
 	}
 	for i := 1; i <= 6; i++ {
-		featured := 0
+		featured := false
 		if i == 3 {
-			featured = 1
+			featured = true
 		}
-		_, err := repo.db.Exec(`INSERT INTO talks (title, slug, summary, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, '', 'published', ?, ?, ?, ?, ?)`,
+		_, err := repo.db.Exec(`INSERT INTO talks (title, slug, summary, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, '', 'published', $3, $4, $5, $6, $7)`,
 			"Talk",
 			"talk-"+strconv.Itoa(i),
 			featured,
 			i*10,
-			now.Add(-time.Duration(i)*time.Hour).Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
+			now.Add(-time.Duration(i)*time.Hour),
+			now,
+			now,
 		)
 		if err != nil {
 			t.Fatalf("seed talk: %v", err)
 		}
 	}
 	for i := 1; i <= 7; i++ {
-		featured := 0
+		featured := false
 		if i == 4 {
-			featured = 1
+			featured = true
 		}
-		_, err := repo.db.Exec(`INSERT INTO writings (title, slug, excerpt, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, '', '', 'published', ?, ?, ?, ?, ?)`,
+		_, err := repo.db.Exec(`INSERT INTO writings (title, slug, excerpt, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, '', '', 'published', $3, $4, $5, $6, $7)`,
 			"Writing",
 			"writing-"+strconv.Itoa(i),
 			featured,
 			i*10,
-			now.Add(-time.Duration(i)*time.Hour).Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
+			now.Add(-time.Duration(i)*time.Hour),
+			now,
+			now,
 		)
 		if err != nil {
 			t.Fatalf("seed writing: %v", err)
 		}
 	}
 	for i := 1; i <= 6; i++ {
-		featured := 0
+		featured := false
 		if i == 2 {
-			featured = 1
+			featured = true
 		}
-		_, err := repo.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES (?, ?, '', '', 'published', ?, ?, ?, ?, ?)`,
+		_, err := repo.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, '', '', 'published', $3, $4, $5, $6, $7)`,
 			"Project",
 			"project-"+strconv.Itoa(i),
 			featured,
 			i*10,
-			now.Add(-time.Duration(i)*time.Hour).Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
-			now.Format(time.RFC3339Nano),
+			now.Add(-time.Duration(i)*time.Hour),
+			now,
+			now,
 		)
 		if err != nil {
 			t.Fatalf("seed project: %v", err)
 		}
 	}
-	_, err := repo.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES ('Future', 'future', '', '', 'published', 1, 1, ?, ?, ?)`,
-		now.Add(24*time.Hour).Format(time.RFC3339Nano),
-		now.Format(time.RFC3339Nano),
-		now.Format(time.RFC3339Nano),
+	_, err := repo.db.Exec(`INSERT INTO projects (title, slug, summary, content_md, status, featured, sort_order, published_at, created_at, updated_at) VALUES ('Future', 'future', '', '', 'published', true, 1, $1, $2, $3)`,
+		now.Add(24*time.Hour),
+		now,
+		now,
 	)
 	if err != nil {
 		t.Fatalf("seed future project: %v", err)

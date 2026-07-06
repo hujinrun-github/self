@@ -8,10 +8,22 @@ import { MarkdownView } from "./MarkdownView";
 const media: MediaMap = {
   "42": {
     content: {
-      url: "/uploads/ab/cd/content.jpg",
+      url: "/media/42/content",
       width: 1600,
       height: 900,
       mime_type: "image/jpeg",
+    },
+  },
+  "201": {
+    original: {
+      url: "/media/201/original",
+      mime_type: "audio/mpeg",
+    },
+  },
+  "202": {
+    original: {
+      url: "/media/202/original",
+      mime_type: "video/mp4",
     },
   },
 };
@@ -39,8 +51,26 @@ describe("MarkdownView", () => {
       <MarkdownView markdown={"![cover](media://asset/42/content)"} media={media} />,
     );
     const image = screen.getByRole("img", { name: "cover" });
-    expect(image).toHaveAttribute("src", "/uploads/ab/cd/content.jpg");
+    expect(image).toHaveAttribute("src", "/media/42/content");
     expect(image).toHaveAttribute("width", "1600");
     expect(image).toHaveAttribute("height", "900");
+  });
+
+  it("resolves audio media links before safe-link validation", () => {
+    renderWithApp(
+      <MarkdownView markdown={"[podcast](media://asset/201/original)"} media={media} />,
+    );
+    expect(screen.getByText("podcast").closest("a")).toHaveAttribute(
+      "href",
+      "/media/201/original",
+    );
+  });
+
+  it("resolves video media links before safe-link validation", () => {
+    renderWithApp(<MarkdownView markdown={"[demo](media://asset/202/original)"} media={media} />);
+    expect(screen.getByText("demo").closest("a")).toHaveAttribute(
+      "href",
+      "/media/202/original",
+    );
   });
 });

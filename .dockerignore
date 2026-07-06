@@ -1,0 +1,16 @@
+.git
+.worktrees
+.codex-run
+.env
+.env.*
+data/
+runtime/
+node_modules/
+web/node_modules/
+web/dist/
+coverage/
+tmp/
+*.log
+*.out
+*.tmp
+docs/superpowers/

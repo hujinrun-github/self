@@ -1,7 +1,7 @@
 export type MediaVariant = {
   url: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   mime_type: string;
 };
 
