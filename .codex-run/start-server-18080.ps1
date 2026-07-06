@@ -1,0 +1,13 @@
+﻿$env:APP_ORIGIN='http://localhost:18080'
+$env:APP_ORIGINS='http://127.0.0.1:18080,http://localhost:18080'
+$env:PUBLIC_BASE_URL='http://localhost:18080'
+$env:SITE_NAME='Portfolio'
+$env:ADMIN_EMAIL='admin@example.com'
+$env:ADMIN_PASSWORD='1234567890abcdef'
+$env:SESSION_SECRET='0123456789abcdef0123456789abcdef'
+$env:DATABASE_URL='postgres://postgres:12345@192.168.1.20:19588/postgres?sslmode=disable&options=-c%20search_path%3Dview_0c7aaa3d3950%2Cpublic%20-c%20timezone%3DUTC'
+$env:UPLOADS_DIR='data/uploads'
+$env:PRIVATE_UPLOADS_DIR='data/private_uploads'
+$env:PORT='18080'
+Set-Location 'D:\MyGitProject\self'
+go run ./cmd/server

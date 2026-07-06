@@ -113,36 +113,40 @@ The repository now ships a GitHub Actions workflow at [.github/workflows/deploy.
 
 Variables:
 
-- `PORTFOLIO_APP_DIR`
-- `PORTFOLIO_APP_ORIGIN`
-- `PORTFOLIO_APP_ORIGINS`
-- `PORTFOLIO_PUBLIC_BASE_URL`
-- `PORTFOLIO_SITE_NAME`
-- `PORTFOLIO_ADMIN_EMAIL`
-- `PORTFOLIO_MEDIA_BLOB_BACKEND`
-- `PORTFOLIO_MINIO_ENDPOINT`
-- `PORTFOLIO_MINIO_BUCKET`
-- `PORTFOLIO_MINIO_USE_SSL`
-- `PORTFOLIO_TRANSLATION_PROVIDER`
-- `PORTFOLIO_TRANSLATION_BASE_URL`
-- `PORTFOLIO_TRANSLATION_MODEL`
-- `PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS`
-- `PORTFOLIO_PORT_HOST`
+| Name | Required | Meaning |
+| --- | --- | --- |
+| `PORTFOLIO_APP_DIR` | Yes | Absolute path of the checked-out repository on the production host. The SSH deploy step runs `cd "$PORTFOLIO_APP_DIR"` before executing the remote deploy script. |
+| `PORTFOLIO_APP_ORIGIN` | Yes | Primary public origin for the app, for example `https://portfolio.example.com`. The server uses it for origin checks and runtime config. |
+| `PORTFOLIO_APP_ORIGINS` | No | Extra allowed origins for admin/API requests, separated by commas or spaces. If omitted, the deploy script writes `APP_ORIGINS` from `PORTFOLIO_APP_ORIGIN`. |
+| `PORTFOLIO_PUBLIC_BASE_URL` | Yes | Canonical public base URL used for public links, SEO metadata, sitemap URLs, and absolute URL generation. Usually the same as `PORTFOLIO_APP_ORIGIN`. |
+| `PORTFOLIO_SITE_NAME` | Yes | Display name for the site, used by runtime config and metadata. Example: `Portfolio`. |
+| `PORTFOLIO_ADMIN_EMAIL` | Yes | Bootstrap admin email. It is only used to create the first admin when the admin table is empty. |
+| `PORTFOLIO_MEDIA_BLOB_BACKEND` | No | Media storage mode. Defaults to `local` when omitted. Set to `hybrid` when Markdown-imported media should use MinIO. |
+| `PORTFOLIO_MINIO_ENDPOINT` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | MinIO endpoint, for example `http://192.168.1.20:19000`. Used by deploy preflight and the application. |
+| `PORTFOLIO_MINIO_BUCKET` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | Dedicated MinIO bucket for this project. Recommended value: `portfolio-media`. |
+| `PORTFOLIO_MINIO_USE_SSL` | No | Whether the MinIO client should force TLS when the endpoint has no URL scheme. Defaults to `false`. Use `true` for HTTPS-only MinIO endpoints without an `https://` prefix. |
+| `PORTFOLIO_TRANSLATION_PROVIDER` | Required only for AI translation generation | Translation provider name. Use `deepseek` when enabling automatic translation generation. Leave empty if AI translation generation is not used. |
+| `PORTFOLIO_TRANSLATION_BASE_URL` | Required only for AI translation generation | Translation API base URL. For DeepSeek this is typically `https://api.deepseek.com`. |
+| `PORTFOLIO_TRANSLATION_MODEL` | Required only for AI translation generation | Model name passed to the translation provider. Example: `deepseek-v4-flash`. |
+| `PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS` | No | Timeout for translation API calls in seconds. Defaults to `30`. |
+| `PORTFOLIO_PORT_HOST` | No | Host port published by Docker Compose. Defaults to `4300`; set explicitly to avoid conflicts with other apps on the same machine. |
 
 Secrets:
 
-- `PORTFOLIO_SSH_HOST`
-- `PORTFOLIO_SSH_PORT`
-- `PORTFOLIO_SSH_USER`
-- `PORTFOLIO_SSH_PRIVATE_KEY`
-- `PORTFOLIO_DATABASE_URL`
-- `PORTFOLIO_DB_USER`
-- `PORTFOLIO_DB_PASSWORD`
-- `PORTFOLIO_ADMIN_PASSWORD`
-- `PORTFOLIO_SESSION_SECRET`
-- `PORTFOLIO_MINIO_ACCESS_KEY`
-- `PORTFOLIO_MINIO_SECRET_KEY`
-- `PORTFOLIO_TRANSLATION_API_KEY`
+| Name | Required | Meaning |
+| --- | --- | --- |
+| `PORTFOLIO_SSH_HOST` | Yes | Production host used by the GitHub Actions SSH deploy step. |
+| `PORTFOLIO_SSH_PORT` | No | SSH port. Use this when the server does not use the default `22`; keeping it configured explicitly is recommended. |
+| `PORTFOLIO_SSH_USER` | Yes | SSH username on the production host. This user must be able to access `PORTFOLIO_APP_DIR`, run `git`, `docker compose`, and write the `runtime` directories. |
+| `PORTFOLIO_SSH_PRIVATE_KEY` | Yes | Private key used by GitHub Actions to SSH into the production host. Store the private key body as the secret value. |
+| `PORTFOLIO_DATABASE_URL` | Yes | PostgreSQL connection string for the `portfolio` database. Example: `postgres://portfolio_app:<password>@192.168.1.20:19588/portfolio?sslmode=disable`. |
+| `PORTFOLIO_DB_USER` | No, but recommended | Database username used by the backup commands. If omitted, the deploy script tries to parse the username from `PORTFOLIO_DATABASE_URL`. |
+| `PORTFOLIO_DB_PASSWORD` | No, but recommended | Database password used by the backup commands through `PGPASSWORD`. If omitted, the deploy script tries to parse the password from `PORTFOLIO_DATABASE_URL`. |
+| `PORTFOLIO_ADMIN_PASSWORD` | Yes | Bootstrap admin password. Must be at least 16 characters. After the first admin exists, changing this secret does not rotate the admin password. |
+| `PORTFOLIO_SESSION_SECRET` | Yes | Secret used to sign sessions. Must be at least 32 characters and should be randomly generated. |
+| `PORTFOLIO_MINIO_ACCESS_KEY` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | Dedicated MinIO access key for `portfolio-media`. It should not be a high-privilege account that can access other project buckets. |
+| `PORTFOLIO_MINIO_SECRET_KEY` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | Secret key paired with `PORTFOLIO_MINIO_ACCESS_KEY`. |
+| `PORTFOLIO_TRANSLATION_API_KEY` | Required only for AI translation generation | API key for the translation provider, such as DeepSeek. Leave unset if translation generation is disabled. |
 
 The remote deploy script renders these `PORTFOLIO_*` values into the runtime `.env` file that the container actually reads. That keeps the GitHub Environment names isolated from other projects on the same machine.
 
