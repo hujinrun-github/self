@@ -103,7 +103,7 @@ wait_for_health() {
 
 main() {
   local app_dir="${PORTFOLIO_APP_DIR:-$PWD}"
-  local state_file current_sha="" release_override release_type wait_supported=0 host_port
+  local state_file fingerprint_file current_fingerprint="" target_fingerprint release_override release_type wait_supported=0 host_port
 
   require_env_value GITHUB_SHA
 
@@ -114,15 +114,14 @@ main() {
   cd "$app_dir"
   mkdir -p runtime
   state_file="runtime/.last_deployed_sha"
-  if [[ -f "$state_file" ]]; then
-    current_sha="$(tr -d '[:space:]' <"$state_file")"
+  fingerprint_file="runtime/.last_migrations_fingerprint"
+  if [[ -f "$fingerprint_file" ]]; then
+    current_fingerprint="$(tr -d '[:space:]' <"$fingerprint_file")"
   fi
 
-  run_logged git fetch --all --tags --prune
-  run_logged git checkout --detach "$GITHUB_SHA"
-
   release_override="${RELEASE_TYPE:-auto}"
-  release_type="$(resolve_release_type "$app_dir" "$current_sha" "$GITHUB_SHA" "$release_override")"
+  target_fingerprint="$(migration_fingerprint "$app_dir")"
+  release_type="$(resolve_release_type_from_migration_fingerprint "$current_fingerprint" "$target_fingerprint" "$release_override")"
 
   host_port="${PORTFOLIO_PORT_HOST:-4300}"
   assert_port_owner_ok "$host_port"
@@ -156,6 +155,7 @@ main() {
 
   if ! is_true "${DRY_RUN:-0}"; then
     printf '%s\n' "$GITHUB_SHA" >"$state_file"
+    printf '%s\n' "$target_fingerprint" >"$fingerprint_file"
   fi
 }
 

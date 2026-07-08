@@ -21,7 +21,12 @@ grep -F "npm --prefix web run build" "$workflow" >/dev/null
 grep -F "Validate deploy configuration" "$workflow" >/dev/null
 grep -F "require_env PORTFOLIO_APP_DIR" "$workflow" >/dev/null
 grep -F "is required in the portfolio-production GitHub Environment" "$workflow" >/dev/null
-grep -F 'git checkout --detach "$GITHUB_SHA"' "$workflow" >/dev/null
+grep -F "Prepare remote app dir" "$workflow" >/dev/null
+grep -F "Upload application bundle" "$workflow" >/dev/null
+grep -F "appleboy/scp-action" "$workflow" >/dev/null
+grep -F "source: Dockerfile,.dockerignore,docker-compose.yml,go.mod,go.sum,cmd,internal,web,scripts,README.md" "$workflow" >/dev/null
+grep -F "Check out deploy source" "$workflow" >/dev/null
+grep -F "Source was uploaded from the GitHub checkout for this workflow SHA." "$workflow" >/dev/null
 grep -F "appleboy/ssh-action" "$workflow" >/dev/null
 grep -F "remote app dir does not exist" "$workflow" >/dev/null
 grep -F 'bash "$PORTFOLIO_APP_DIR/scripts/deploy/remote-deploy.sh"' "$workflow" >/dev/null

@@ -98,11 +98,11 @@ The target PostgreSQL database must already exist. The import command runs migra
 
 ## GitHub Auto Deploy
 
-The repository now ships a GitHub Actions workflow at [.github/workflows/deploy.yml](/D:/MyGitProject/self/.github/workflows/deploy.yml) plus the remote orchestration scripts under [scripts/deploy](/D:/MyGitProject/self/scripts/deploy). The workflow runs CI first, then uses SSH to execute [remote-deploy.sh](/D:/MyGitProject/self/scripts/deploy/remote-deploy.sh) against the checked-out production repo at `PORTFOLIO_APP_DIR`.
+The repository now ships a GitHub Actions workflow at [.github/workflows/deploy.yml](/D:/MyGitProject/self/.github/workflows/deploy.yml) plus the remote orchestration scripts under [scripts/deploy](/D:/MyGitProject/self/scripts/deploy). The workflow runs CI first, uploads the current application source to `PORTFOLIO_APP_DIR`, then uses SSH to execute [remote-deploy.sh](/D:/MyGitProject/self/scripts/deploy/remote-deploy.sh) from that directory.
 
 ### First Deploy Prerequisites
 
-1. Check out this repository on the production host at the exact directory that will be stored in `PORTFOLIO_APP_DIR`.
+1. Create the production app directory that will be stored in `PORTFOLIO_APP_DIR`. It may be empty; the deploy workflow uploads the application source on each run.
 2. Create `runtime/uploads`, `runtime/private_uploads`, and `runtime/backups` under that app directory.
 3. Create the dedicated PostgreSQL role and database by adapting [portfolio.sql](/D:/MyGitProject/self/scripts/deploy/bootstrap/portfolio.sql).
 4. Create the MinIO bucket `portfolio-media`, then attach a least-privilege policy based on [minio-policy.json.example](/D:/MyGitProject/self/scripts/deploy/bootstrap/minio-policy.json.example).
@@ -115,7 +115,7 @@ Variables:
 
 | Name | Required | Meaning |
 | --- | --- | --- |
-| `PORTFOLIO_APP_DIR` | Yes | Absolute path of the checked-out repository on the production host. The SSH deploy step runs `cd "$PORTFOLIO_APP_DIR"` before executing the remote deploy script. |
+| `PORTFOLIO_APP_DIR` | Yes | Absolute path of the application directory on the production host. The workflow uploads source files there, then executes the remote deploy script from that directory. |
 | `PORTFOLIO_APP_ORIGIN` | Yes | Primary public origin for the app, for example `https://portfolio.example.com`. The server uses it for origin checks and runtime config. |
 | `PORTFOLIO_APP_ORIGINS` | No | Extra allowed origins for admin/API requests, separated by commas or spaces. If omitted, the deploy script writes `APP_ORIGINS` from `PORTFOLIO_APP_ORIGIN`. |
 | `PORTFOLIO_PUBLIC_BASE_URL` | Yes | Canonical public base URL used for public links, SEO metadata, sitemap URLs, and absolute URL generation. Usually the same as `PORTFOLIO_APP_ORIGIN`. |
@@ -137,7 +137,7 @@ Secrets:
 | --- | --- | --- |
 | `PORTFOLIO_SSH_HOST` | Yes | Production host used by the GitHub Actions SSH deploy step. |
 | `PORTFOLIO_SSH_PORT` | No | SSH port. Use this when the server does not use the default `22`; keeping it configured explicitly is recommended. |
-| `PORTFOLIO_SSH_USER` | Yes | SSH username on the production host. This user must be able to access `PORTFOLIO_APP_DIR`, run `git`, `docker compose`, and write the `runtime` directories. |
+| `PORTFOLIO_SSH_USER` | Yes | SSH username on the production host. This user must be able to access `PORTFOLIO_APP_DIR`, run `docker compose`, and write the `runtime` directories. |
 | `PORTFOLIO_SSH_PRIVATE_KEY` | Yes | Private key used by GitHub Actions to SSH into the production host. Store the private key body as the secret value. |
 | `PORTFOLIO_DATABASE_URL` | Yes | PostgreSQL connection string for the `portfolio` database. Example: `postgres://portfolio_app:<password>@192.168.1.20:19588/portfolio?sslmode=disable`. |
 | `PORTFOLIO_DB_USER` | No, but recommended | Database username used by the backup commands. If omitted, the deploy script tries to parse the username from `PORTFOLIO_DATABASE_URL`. |
@@ -153,8 +153,8 @@ The remote deploy script renders these `PORTFOLIO_*` values into the runtime `.e
 ### Release Types
 
 - `app-only`: use this when `internal/db/migrations/*.sql` did not change. The deploy script skips the maintenance window and database backup steps.
-- `migration`: use this when migration files changed, or when the production host has no recorded deployed SHA yet. The deploy script stops `portfolio-app`, writes schema and full `pg_dump` backups into `runtime/backups`, and then continues the rollout.
-- `auto`: the default. The workflow compares the currently recorded deployed SHA to `GITHUB_SHA`; if migration files changed, it upgrades the release to `migration`.
+- `migration`: use this when migration files changed, or when the production host has no recorded migration fingerprint yet. The deploy script stops `portfolio-app`, writes schema and full `pg_dump` backups into `runtime/backups`, and then continues the rollout.
+- `auto`: the default. The remote deploy script compares the last recorded migration fingerprint with the uploaded source bundle; if migration files changed, it upgrades the release to `migration`.
 
 Treat the first production rollout as `migration`, even when using `workflow_dispatch`, so the host captures a known-good backup baseline.
 

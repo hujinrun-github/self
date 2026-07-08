@@ -33,36 +33,12 @@ assert_contains() {
 
 create_fixture_repo() {
   FIXTURE_REPO="$(mktemp -d)"
-  git -C "$FIXTURE_REPO" init -q
-  git -C "$FIXTURE_REPO" config user.email "codex@example.com"
-  git -C "$FIXTURE_REPO" config user.name "Codex"
-
   mkdir -p "$FIXTURE_REPO/internal/db/migrations" "$FIXTURE_REPO/cmd/server"
   cat <<'EOF' > "$FIXTURE_REPO/cmd/server/main.go"
 package main
 
 func main() {}
 EOF
-  git -C "$FIXTURE_REPO" add .
-  git -C "$FIXTURE_REPO" commit -qm "base"
-  BASE_SHA="$(git -C "$FIXTURE_REPO" rev-parse HEAD)"
-
-  cat <<'EOF' > "$FIXTURE_REPO/cmd/server/main.go"
-package main
-
-func main() {
-	println("updated")
-}
-EOF
-  git -C "$FIXTURE_REPO" commit -qam "app only change"
-  APP_SHA="$(git -C "$FIXTURE_REPO" rev-parse HEAD)"
-
-  cat <<'EOF' > "$FIXTURE_REPO/internal/db/migrations/001_test.sql"
-create table demo(id bigint primary key);
-EOF
-  git -C "$FIXTURE_REPO" add internal/db/migrations/001_test.sql
-  git -C "$FIXTURE_REPO" commit -qm "migration change"
-  MIGRATION_SHA="$(git -C "$FIXTURE_REPO" rev-parse HEAD)"
 }
 
 cleanup() {
@@ -73,38 +49,42 @@ cleanup() {
 
 trap cleanup EXIT
 
-test_release_type_detects_migration_diff() {
-  local actual
-  actual="$(resolve_release_type "$FIXTURE_REPO" "$APP_SHA" "$MIGRATION_SHA" "auto")"
-  assert_eq "$actual" "migration" "auto release type should detect migration diff"
+test_migration_fingerprint_changes_when_migrations_change() {
+  local before after
+  before="$(migration_fingerprint "$FIXTURE_REPO")"
+  cat <<'EOF' > "$FIXTURE_REPO/internal/db/migrations/002_more.sql"
+alter table demo add column name text;
+EOF
+  after="$(migration_fingerprint "$FIXTURE_REPO")"
+  [[ "$before" != "$after" ]] || fail "expected migration fingerprint to change"
 }
 
-test_release_type_detects_app_only_diff() {
+test_release_type_from_fingerprint_detects_migration() {
   local actual
-  actual="$(resolve_release_type "$FIXTURE_REPO" "$BASE_SHA" "$APP_SHA" "auto")"
-  assert_eq "$actual" "app-only" "auto release type should stay app-only without migration diff"
+  actual="$(resolve_release_type_from_migration_fingerprint "old" "new" "auto")"
+  assert_eq "$actual" "migration" "auto release should detect migration fingerprint changes"
 }
 
-test_release_type_defaults_to_migration_without_current_sha() {
+test_release_type_from_fingerprint_detects_app_only() {
   local actual
-  actual="$(resolve_release_type "$FIXTURE_REPO" "" "$APP_SHA" "auto")"
-  assert_eq "$actual" "migration" "missing current sha should force migration release"
+  actual="$(resolve_release_type_from_migration_fingerprint "same" "same" "auto")"
+  assert_eq "$actual" "app-only" "auto release should stay app-only when migration fingerprint is unchanged"
 }
 
-test_manual_app_only_rejects_migration_diff() {
+test_app_only_override_rejects_missing_migration_fingerprint() {
   local output
-  if output="$(resolve_release_type "$FIXTURE_REPO" "$APP_SHA" "$MIGRATION_SHA" "app-only" 2>&1)"; then
-    fail "expected app-only override to fail when migrations changed"
+  if output="$(resolve_release_type_from_migration_fingerprint "" "new" "app-only" 2>&1)"; then
+    fail "expected app-only override to fail without previous migration fingerprint"
   fi
-  assert_contains "$output" "migration files changed" "override failure should explain migration diff"
+  assert_contains "$output" "known migration fingerprint" "missing fingerprint failure should explain first deploy risk"
 }
 
-test_release_type_rejects_invalid_current_sha() {
+test_app_only_override_rejects_changed_migration_fingerprint() {
   local output
-  if output="$(resolve_release_type "$FIXTURE_REPO" "missing-sha" "$APP_SHA" "auto" 2>&1)"; then
-    fail "expected invalid current sha to fail"
+  if output="$(resolve_release_type_from_migration_fingerprint "old" "new" "app-only" 2>&1)"; then
+    fail "expected app-only override to fail when migration fingerprint changed"
   fi
-  assert_contains "$output" "failed to diff migration files" "invalid sha failure should mention diff failure"
+  assert_contains "$output" "migration fingerprint changed" "changed fingerprint failure should explain migration risk"
 }
 
 test_render_env_file_maps_portfolio_prefix() {
@@ -162,11 +142,11 @@ test_assert_port_owner_ok_rejects_foreign_listener() {
 
 main() {
   create_fixture_repo
-  test_release_type_detects_migration_diff
-  test_release_type_detects_app_only_diff
-  test_release_type_defaults_to_migration_without_current_sha
-  test_manual_app_only_rejects_migration_diff
-  test_release_type_rejects_invalid_current_sha
+  test_migration_fingerprint_changes_when_migrations_change
+  test_release_type_from_fingerprint_detects_migration
+  test_release_type_from_fingerprint_detects_app_only
+  test_app_only_override_rejects_missing_migration_fingerprint
+  test_app_only_override_rejects_changed_migration_fingerprint
   test_render_env_file_maps_portfolio_prefix
   test_compose_supports_wait_detects_flag
   test_assert_port_owner_ok_allows_existing_portfolio_app

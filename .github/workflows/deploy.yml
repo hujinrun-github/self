@@ -97,6 +97,9 @@ jobs:
       PORTFOLIO_MINIO_SECRET_KEY: ${{ secrets.PORTFOLIO_MINIO_SECRET_KEY }}
       PORTFOLIO_TRANSLATION_API_KEY: ${{ secrets.PORTFOLIO_TRANSLATION_API_KEY }}
     steps:
+      - name: Check out deploy source
+        uses: actions/checkout@v4
+
       - name: Validate deploy configuration
         shell: bash
         env:
@@ -140,6 +143,39 @@ jobs:
           fi
 
           exit "$missing"
+
+      - name: Prepare remote app dir
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          PORTFOLIO_APP_DIR: ${{ env.PORTFOLIO_APP_DIR }}
+        with:
+          host: ${{ secrets.PORTFOLIO_SSH_HOST }}
+          username: ${{ secrets.PORTFOLIO_SSH_USER }}
+          key: ${{ secrets.PORTFOLIO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORTFOLIO_SSH_PORT }}
+          script_stop: true
+          envs: PORTFOLIO_APP_DIR
+          script: |
+            set -euo pipefail
+            if [ -z "${PORTFOLIO_APP_DIR:-}" ] || [ "$PORTFOLIO_APP_DIR" = "/" ]; then
+              echo "PORTFOLIO_APP_DIR must be a non-root absolute path" >&2
+              exit 1
+            fi
+            mkdir -p "$PORTFOLIO_APP_DIR"
+            for path in Dockerfile .dockerignore docker-compose.yml go.mod go.sum cmd internal web scripts README.md; do
+              rm -rf "$PORTFOLIO_APP_DIR/$path"
+            done
+
+      - name: Upload application bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PORTFOLIO_SSH_HOST }}
+          username: ${{ secrets.PORTFOLIO_SSH_USER }}
+          key: ${{ secrets.PORTFOLIO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORTFOLIO_SSH_PORT }}
+          source: Dockerfile,.dockerignore,docker-compose.yml,go.mod,go.sum,cmd,internal,web,scripts,README.md
+          target: ${{ env.PORTFOLIO_APP_DIR }}
+          overwrite: true
 
       - name: Execute remote deploy
         uses: appleboy/ssh-action@v1.0.3
@@ -194,5 +230,5 @@ jobs:
               echo "remote deploy script does not exist under PORTFOLIO_APP_DIR: $PORTFOLIO_APP_DIR" >&2
               exit 1
             fi
-            # remote-deploy.sh pins the release with: git checkout --detach "$GITHUB_SHA"
+            # Source was uploaded from the GitHub checkout for this workflow SHA.
             bash "$PORTFOLIO_APP_DIR/scripts/deploy/remote-deploy.sh"

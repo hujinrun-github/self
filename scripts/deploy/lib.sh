@@ -36,13 +36,29 @@ require_env_value() {
   fi
 }
 
-resolve_release_type() {
+migration_fingerprint() {
   local repo="$1"
-  local current_sha="$2"
-  local target_sha="$3"
-  local override="${4:-auto}"
-  local migration_changed=0
-  local diff_output=""
+  local migrations_dir="$repo/internal/db/migrations"
+
+  if [[ ! -d "$migrations_dir" ]]; then
+    printf 'none\n'
+    return 0
+  fi
+
+  (
+    cd "$repo"
+    find internal/db/migrations -type f -name '*.sql' -print0 \
+      | sort -z \
+      | xargs -0 sha256sum \
+      | sha256sum \
+      | awk '{print $1}'
+  )
+}
+
+resolve_release_type_from_migration_fingerprint() {
+  local current_fingerprint="$1"
+  local target_fingerprint="$2"
+  local override="${3:-auto}"
 
   case "$override" in
     auto|app-only|migration) ;;
@@ -52,8 +68,8 @@ resolve_release_type() {
       ;;
   esac
 
-  if [[ -z "$target_sha" ]]; then
-    echo "target sha is required" >&2
+  if [[ -z "$target_fingerprint" ]]; then
+    echo "target migration fingerprint is required" >&2
     return 1
   fi
 
@@ -62,31 +78,20 @@ resolve_release_type() {
     return 0
   fi
 
-  if [[ -z "$current_sha" ]]; then
+  if [[ -z "$current_fingerprint" ]]; then
     if [[ "$override" == "app-only" ]]; then
-      echo "cannot force app-only release without a known current deployment sha" >&2
+      echo "cannot force app-only release without a known migration fingerprint" >&2
       return 1
     fi
     printf 'migration\n'
     return 0
   fi
 
-  if ! diff_output="$(
-    git -C "$repo" diff --name-only "$current_sha" "$target_sha" -- ':(glob)internal/db/migrations/*.sql'
-  )"; then
-    echo "failed to diff migration files between $current_sha and $target_sha" >&2
-    return 1
-  fi
-  if [[ -n "$diff_output" ]]; then
-    migration_changed=1
-  fi
-
-  if [[ "$override" == "app-only" && "$migration_changed" -eq 1 ]]; then
-    echo "cannot force app-only release: migration files changed" >&2
-    return 1
-  fi
-
-  if [[ "$migration_changed" -eq 1 ]]; then
+  if [[ "$current_fingerprint" != "$target_fingerprint" ]]; then
+    if [[ "$override" == "app-only" ]]; then
+      echo "cannot force app-only release: migration fingerprint changed" >&2
+      return 1
+    fi
     printf 'migration\n'
     return 0
   fi
