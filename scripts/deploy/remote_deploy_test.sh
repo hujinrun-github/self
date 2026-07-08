@@ -148,11 +148,31 @@ test_dry_run_prints_planned_steps() {
   [[ "$output" == *"docker compose up -d --remove-orphans --wait"* ]] || fail "expected dry run to print compose up"
 }
 
+test_missing_app_dir_fails_clearly() {
+  local missing_dir trace_file output
+  missing_dir="/tmp/portfolio-missing-$RANDOM"
+  trace_file="$(mktemp)"
+
+  if output="$(
+    PATH="$SCRIPT_DIR/test-bin:$PATH" \
+    TRACE_FILE="$trace_file" \
+    GITHUB_SHA="deadbeef" \
+    RELEASE_TYPE="app-only" \
+    DRY_RUN=1 \
+    PORTFOLIO_APP_DIR="$missing_dir" \
+      bash "$SCRIPT_DIR/remote-deploy.sh" 2>&1
+  )"; then
+    fail "expected missing PORTFOLIO_APP_DIR path to fail"
+  fi
+  [[ "$output" == *"remote app dir does not exist"* ]] || fail "expected clear missing app dir error, got: $output"
+}
+
 main() {
   test_migration_release_stops_before_backup_and_pins_sha
   test_app_only_release_skips_backup_and_stop
   test_wait_fallback_polls_health_when_wait_not_supported
   test_dry_run_prints_planned_steps
+  test_missing_app_dir_fails_clearly
   echo "PASS: remote-deploy.sh contract tests passed"
 }
 

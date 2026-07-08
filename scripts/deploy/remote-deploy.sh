@@ -107,6 +107,10 @@ main() {
 
   require_env_value GITHUB_SHA
 
+  if [[ ! -d "$app_dir" ]]; then
+    echo "remote app dir does not exist: $app_dir" >&2
+    return 1
+  fi
   cd "$app_dir"
   mkdir -p runtime
   state_file="runtime/.last_deployed_sha"
