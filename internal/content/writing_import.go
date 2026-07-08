@@ -24,6 +24,7 @@ const writingImportPreviewTTL = 2 * time.Hour
 
 var (
 	ErrImportTraversal = errors.New("import media path escapes markdown root")
+	ErrImportExpired   = errors.New("writing import preview expired")
 
 	localMarkdownMediaRefRE = regexp.MustCompile(`(!?\[[^\]]*\])\(([^)\s]+)\)`)
 )
@@ -693,7 +694,11 @@ WHERE token_hash = $1
 		session.TargetWritingETag = targetETag.String
 	}
 	session.ExpiresAt = storage.NormalizeTime(expiresAt)
-	if session.Status != "preview_ready" || storage.NormalizeTime(s.clock()).After(session.ExpiresAt) {
+	now := storage.NormalizeTime(s.clock())
+	if session.Status == "expired" || !now.Before(session.ExpiresAt) {
+		return importSessionRecord{}, ErrImportExpired
+	}
+	if session.Status != "preview_ready" {
 		return importSessionRecord{}, ErrNotFound
 	}
 	return session, nil

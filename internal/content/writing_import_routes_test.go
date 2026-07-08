@@ -117,7 +117,7 @@ func createExpiredPreviewSession(t *testing.T, database *sql.DB) struct{ Token s
 	token := "expired-preview-token"
 	if _, err := database.Exec(`
 INSERT INTO writing_import_sessions (token_hash, admin_session_id, mode, source_file_name, source_checksum_sha256, original_markdown, rewritten_markdown, parsed_payload, status, expires_at, created_at, updated_at)
-VALUES ($1, 11, 'create', 'expired.md', 'checksum-expired', 'Body', 'Body', '{}'::jsonb, 'preview_ready', now() - interval '1 minute', now(), now())
+VALUES ($1, 11, 'create', 'expired.md', 'checksum-expired', 'Body', 'Body', '{}'::jsonb, 'preview_ready', '2026-06-29T07:59:00Z', now(), now())
 `, hashImportToken(token)); err != nil {
 		t.Fatalf("createExpiredPreviewSession: %v", err)
 	}
