@@ -27,6 +27,14 @@ run_logged() {
   "$@"
 }
 
+run_quiet_logged() {
+  trace_command "$*"
+  if is_true "${DRY_RUN:-0}"; then
+    return 0
+  fi
+  "$@" >/dev/null
+}
+
 require_env_value() {
   local name="$1"
   local value="${!name:-}"
