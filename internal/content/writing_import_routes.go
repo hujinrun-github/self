@@ -151,6 +151,8 @@ func writeWritingImportError(w http.ResponseWriter, err error) {
 	switch {
 	case err == nil:
 		return
+	case errors.Is(err, ErrImportExpired):
+		httpserver.WriteError(w, http.StatusGone, "gone", err.Error(), nil)
 	case errors.Is(err, ErrNotFound):
 		httpserver.WriteError(w, http.StatusNotFound, "not_found", err.Error(), nil)
 	case errors.Is(err, ErrImportTraversal), errors.Is(err, media.ErrUploadInvalid):
