@@ -54,6 +54,120 @@ compose_env_value() {
   printf '%s' "$value"
 }
 
+trim_space() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+is_host_gateway_endpoint_host() {
+  local candidate="${1,,}"
+  local host
+  candidate="${candidate#[}"
+  candidate="${candidate%]}"
+
+  for host in localhost 127.0.0.1 0.0.0.0 host.docker.internal ${PORTFOLIO_DEPLOY_HOST:-} ${PORTFOLIO_HOST_GATEWAY_ENDPOINT_HOSTS:-}; do
+    host="${host,,}"
+    host="${host#[}"
+    host="${host%]}"
+    if [[ -n "$host" && "$candidate" == "$host" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+normalize_url_host_for_container() {
+  local raw="$1"
+  local default_scheme="${2:-http}"
+  local value scheme rest authority suffix host port normalized_host
+
+  value="$(trim_space "$raw")"
+  if [[ -z "$value" ]]; then
+    printf '\n'
+    return 0
+  fi
+
+  if [[ "$value" == *"://"* ]]; then
+    scheme="${value%%://*}"
+    rest="${value#*://}"
+  else
+    scheme="$default_scheme"
+    rest="$value"
+  fi
+
+  authority="$rest"
+  suffix=""
+  if [[ "$rest" == */* ]]; then
+    authority="${rest%%/*}"
+    suffix="/${rest#*/}"
+  fi
+
+  host="$authority"
+  port=""
+  if [[ "$authority" == *:* && "$authority" != \[*\] ]]; then
+    host="${authority%%:*}"
+    port="${authority#*:}"
+  fi
+
+  normalized_host="$host"
+  if is_host_gateway_endpoint_host "$host"; then
+    normalized_host="host.docker.internal"
+  fi
+
+  if [[ -n "$port" ]]; then
+    printf '%s://%s:%s%s\n' "$scheme" "$normalized_host" "$port" "$suffix"
+    return 0
+  fi
+  printf '%s://%s%s\n' "$scheme" "$normalized_host" "$suffix"
+}
+
+normalize_minio_endpoint_url() {
+  local raw="${PORTFOLIO_MINIO_ENDPOINT:-}"
+  local scheme="http"
+  if is_true "${PORTFOLIO_MINIO_USE_SSL:-false}"; then
+    scheme="https"
+  fi
+  normalize_url_host_for_container "$raw" "$scheme"
+}
+
+normalize_database_url_for_container() {
+  local raw="$1"
+  local value scheme without_scheme userinfo hostpath hostport path host port normalized_host
+
+  value="$(trim_space "$raw")"
+  if [[ "$value" != *"://"* || "$value" != *@* || "$value" != */* ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+
+  scheme="${value%%://*}"
+  without_scheme="${value#*://}"
+  userinfo="${without_scheme%%@*}"
+  hostpath="${without_scheme#*@}"
+  hostport="${hostpath%%/*}"
+  path="${hostpath#*/}"
+  host="$hostport"
+  port=""
+
+  if [[ "$hostport" == *:* && "$hostport" != \[*\] ]]; then
+    host="${hostport%%:*}"
+    port="${hostport#*:}"
+  fi
+
+  normalized_host="$host"
+  if is_host_gateway_endpoint_host "$host"; then
+    normalized_host="host.docker.internal"
+  fi
+
+  if [[ -n "$port" ]]; then
+    printf '%s://%s@%s:%s/%s\n' "$scheme" "$userinfo" "$normalized_host" "$port" "$path"
+    return 0
+  fi
+  printf '%s://%s@%s/%s\n' "$scheme" "$userinfo" "$normalized_host" "$path"
+}
+
 migration_fingerprint() {
   local repo="$1"
   local migrations_dir="$repo/internal/db/migrations"
@@ -156,6 +270,7 @@ assert_port_owner_ok() {
 
 render_env_file() {
   local target="$1"
+  local database_url minio_endpoint
 
   require_env_value PORTFOLIO_APP_ORIGIN
   require_env_value PORTFOLIO_PUBLIC_BASE_URL
@@ -165,6 +280,9 @@ render_env_file() {
   require_env_value PORTFOLIO_SESSION_SECRET
   require_env_value PORTFOLIO_DATABASE_URL
 
+  database_url="$(normalize_database_url_for_container "$PORTFOLIO_DATABASE_URL")"
+  minio_endpoint="$(normalize_minio_endpoint_url)"
+
   cat >"$target" <<EOF
 APP_ORIGIN=$(compose_env_value "${PORTFOLIO_APP_ORIGIN}")
 APP_ORIGINS=$(compose_env_value "${PORTFOLIO_APP_ORIGINS:-$PORTFOLIO_APP_ORIGIN}")
@@ -173,11 +291,11 @@ SITE_NAME=$(compose_env_value "${PORTFOLIO_SITE_NAME}")
 ADMIN_EMAIL=$(compose_env_value "${PORTFOLIO_ADMIN_EMAIL}")
 ADMIN_PASSWORD=$(compose_env_value "${PORTFOLIO_ADMIN_PASSWORD}")
 SESSION_SECRET=$(compose_env_value "${PORTFOLIO_SESSION_SECRET}")
-DATABASE_URL=$(compose_env_value "${PORTFOLIO_DATABASE_URL}")
+DATABASE_URL=$(compose_env_value "${database_url}")
 UPLOADS_DIR=/app/data/uploads
 PRIVATE_UPLOADS_DIR=/app/data/private_uploads
 MEDIA_BLOB_BACKEND=$(compose_env_value "${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}")
-MINIO_ENDPOINT=$(compose_env_value "${PORTFOLIO_MINIO_ENDPOINT:-}")
+MINIO_ENDPOINT=$(compose_env_value "${minio_endpoint}")
 MINIO_ACCESS_KEY=$(compose_env_value "${PORTFOLIO_MINIO_ACCESS_KEY:-}")
 MINIO_SECRET_KEY=$(compose_env_value "${PORTFOLIO_MINIO_SECRET_KEY:-}")
 MINIO_BUCKET=$(compose_env_value "${PORTFOLIO_MINIO_BUCKET:-}")
@@ -261,6 +379,7 @@ load_database_connection_parts() {
 
   require_env_value PORTFOLIO_DATABASE_URL
 
+  raw_url="$(normalize_database_url_for_container "$raw_url")"
   mapfile -t parsed < <(parse_database_url "$raw_url")
   DB_HOST="${POSTGRES_HOST:-${parsed[0]}}"
   DB_PORT="${POSTGRES_PORT:-${parsed[1]}}"

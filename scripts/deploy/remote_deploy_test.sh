@@ -98,7 +98,7 @@ test_migration_release_stops_before_backup_and_deploy() {
   [[ "$config_line" -lt "$build_line" ]] || fail "expected config before build"
   [[ "$build_line" -lt "$up_line" ]] || fail "expected build before up"
 
-  grep -F "DATABASE_URL=postgres://portfolio_app:secret@127.0.0.1:19588/portfolio?sslmode=disable" "$app_dir/.env" >/dev/null || fail "expected .env to be rendered"
+  grep -F "DATABASE_URL=postgres://portfolio_app:secret@host.docker.internal:19588/portfolio?sslmode=disable" "$app_dir/.env" >/dev/null || fail "expected .env to be rendered with a container-reachable database host"
 }
 
 test_app_only_release_skips_backup_and_stop() {

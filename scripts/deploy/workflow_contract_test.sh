@@ -33,6 +33,7 @@ grep -F 'bash "$PORTFOLIO_APP_DIR/scripts/deploy/remote-deploy.sh"' "$workflow" 
 grep -F "PORTFOLIO_DATABASE_URL" "$workflow" >/dev/null
 grep -F "PORTFOLIO_APP_DIR" "$workflow" >/dev/null
 grep -F "PORTFOLIO_MINIO_PREFLIGHT_NETWORK" "$workflow" >/dev/null
+grep -F "PORTFOLIO_DEPLOY_HOST" "$workflow" >/dev/null
 grep -F "GITHUB_SHA" "$workflow" >/dev/null
 
 echo "PASS: deploy workflow matches the expected contract"

@@ -126,6 +126,25 @@ test_render_env_file_quotes_dollar_values_for_compose() {
   rm -f "$target"
 }
 
+test_render_env_file_normalizes_deploy_host_endpoints_for_containers() {
+  local target
+  target="$(mktemp)"
+  PORTFOLIO_APP_ORIGIN="https://portfolio.example.com" \
+  PORTFOLIO_PUBLIC_BASE_URL="https://portfolio.example.com" \
+  PORTFOLIO_SITE_NAME="Portfolio" \
+  PORTFOLIO_ADMIN_EMAIL="admin@example.com" \
+  PORTFOLIO_ADMIN_PASSWORD="1234567890abcdef" \
+  PORTFOLIO_SESSION_SECRET="0123456789abcdef0123456789abcdef" \
+  PORTFOLIO_DATABASE_URL="postgres://portfolio:secret@119.91.114.203:19588/portfolio?sslmode=disable" \
+  PORTFOLIO_MEDIA_BLOB_BACKEND="hybrid" \
+  PORTFOLIO_MINIO_ENDPOINT="http://119.91.114.203:19000" \
+  PORTFOLIO_DEPLOY_HOST="119.91.114.203" \
+    render_env_file "$target"
+  grep -F "DATABASE_URL=postgres://portfolio:secret@host.docker.internal:19588/portfolio?sslmode=disable" "$target" >/dev/null || fail "expected database url to use host gateway inside the app container"
+  grep -F "MINIO_ENDPOINT=http://host.docker.internal:19000" "$target" >/dev/null || fail "expected MinIO endpoint to use host gateway inside the app container"
+  rm -f "$target"
+}
+
 test_schema_backup_maps_host_docker_internal_for_host_pg_dump() {
   local backup_dir trace_file
   backup_dir="$(mktemp -d)"
@@ -138,6 +157,22 @@ test_schema_backup_maps_host_docker_internal_for_host_pg_dump() {
     run_schema_backup "$backup_dir" "deadbeef" >/dev/null
 
   grep -F "pg_dump -h 127.0.0.1 -p 19588 -U portfolio -d portfolio --schema-only" "$trace_file" >/dev/null || fail "expected host pg_dump to use localhost for host.docker.internal"
+  rm -rf "$backup_dir" "$trace_file"
+}
+
+test_schema_backup_maps_deploy_host_for_host_pg_dump() {
+  local backup_dir trace_file
+  backup_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+
+  PATH="$SCRIPT_DIR/test-bin:$ORIGINAL_PATH" \
+  TRACE_FILE="$trace_file" \
+  DRY_RUN=1 \
+  PORTFOLIO_DEPLOY_HOST="119.91.114.203" \
+  PORTFOLIO_DATABASE_URL="postgres://portfolio:secret@119.91.114.203:19588/portfolio?sslmode=disable" \
+    run_schema_backup "$backup_dir" "deadbeef" >/dev/null
+
+  grep -F "pg_dump -h 127.0.0.1 -p 19588 -U portfolio -d portfolio --schema-only" "$trace_file" >/dev/null || fail "expected host pg_dump to use localhost for deploy-host database URL"
   rm -rf "$backup_dir" "$trace_file"
 }
 
@@ -179,7 +214,9 @@ main() {
   test_app_only_override_rejects_changed_migration_fingerprint
   test_render_env_file_maps_portfolio_prefix
   test_render_env_file_quotes_dollar_values_for_compose
+  test_render_env_file_normalizes_deploy_host_endpoints_for_containers
   test_schema_backup_maps_host_docker_internal_for_host_pg_dump
+  test_schema_backup_maps_deploy_host_for_host_pg_dump
   test_compose_supports_wait_detects_flag
   test_assert_port_owner_ok_allows_existing_portfolio_app
   test_assert_port_owner_ok_rejects_foreign_listener

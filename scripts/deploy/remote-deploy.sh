@@ -5,23 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 
-normalize_minio_endpoint_url() {
-  local raw="${PORTFOLIO_MINIO_ENDPOINT:-}"
-  if [[ -z "$raw" ]]; then
-    echo ""
-    return 0
-  fi
-  if [[ "$raw" == *"://"* ]]; then
-    printf '%s\n' "$raw"
-    return 0
-  fi
-  if is_true "${PORTFOLIO_MINIO_USE_SSL:-false}"; then
-    printf 'https://%s\n' "$raw"
-    return 0
-  fi
-  printf 'http://%s\n' "$raw"
-}
-
 run_minio_preflight_if_needed() {
   local endpoint object_key network trace
 
