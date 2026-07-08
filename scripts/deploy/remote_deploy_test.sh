@@ -50,12 +50,13 @@ run_remote_deploy() {
     PORTFOLIO_DATABASE_URL="postgres://portfolio_app:secret@127.0.0.1:19588/portfolio?sslmode=disable" \
     PORTFOLIO_DB_USER="portfolio_app" \
     PORTFOLIO_DB_PASSWORD="secret" \
-    PORTFOLIO_MEDIA_BLOB_BACKEND="local" \
+    PORTFOLIO_MEDIA_BLOB_BACKEND="${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}" \
     PORTFOLIO_MINIO_ENDPOINT="http://127.0.0.1:19000" \
     PORTFOLIO_MINIO_ACCESS_KEY="minio-user" \
     PORTFOLIO_MINIO_SECRET_KEY="minio-secret" \
     PORTFOLIO_MINIO_BUCKET="portfolio-media" \
     PORTFOLIO_MINIO_USE_SSL="false" \
+    PORTFOLIO_MINIO_PREFLIGHT_NETWORK="${PORTFOLIO_MINIO_PREFLIGHT_NETWORK:-}" \
     PORTFOLIO_TRANSLATION_PROVIDER="deepseek" \
     PORTFOLIO_TRANSLATION_API_KEY="deepseek-key" \
     PORTFOLIO_TRANSLATION_BASE_URL="https://api.deepseek.com" \
@@ -148,6 +149,16 @@ test_dry_run_prints_planned_steps() {
   [[ "$output" == *"docker compose up -d --remove-orphans --wait"* ]] || fail "expected dry run to print compose up"
 }
 
+test_hybrid_release_uses_host_gateway_for_minio_preflight() {
+  local app_dir trace_file
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+
+  PORTFOLIO_MEDIA_BLOB_BACKEND="hybrid" run_remote_deploy "$app_dir" "$trace_file"
+
+  assert_trace_contains "$trace_file" "docker run --rm --add-host host.docker.internal:host-gateway --entrypoint /bin/sh minio/mc -lc minio preflight"
+}
+
 test_missing_app_dir_fails_clearly() {
   local missing_dir trace_file output
   missing_dir="/tmp/portfolio-missing-$RANDOM"
@@ -172,6 +183,7 @@ main() {
   test_app_only_release_skips_backup_and_stop
   test_wait_fallback_polls_health_when_wait_not_supported
   test_dry_run_prints_planned_steps
+  test_hybrid_release_uses_host_gateway_for_minio_preflight
   test_missing_app_dir_fails_clearly
   echo "PASS: remote-deploy.sh contract tests passed"
 }

@@ -36,6 +36,16 @@ require_env_value() {
   fi
 }
 
+compose_env_value() {
+  local value="$1"
+  if [[ "$value" == *'$'* || "$value" == *"'"* || "$value" =~ ^[[:space:]] || "$value" =~ [[:space:]]$ ]]; then
+    value="${value//\'/\'\\\'\'}"
+    printf "'%s'" "$value"
+    return 0
+  fi
+  printf '%s' "$value"
+}
+
 migration_fingerprint() {
   local repo="$1"
   local migrations_dir="$repo/internal/db/migrations"
@@ -148,27 +158,27 @@ render_env_file() {
   require_env_value PORTFOLIO_DATABASE_URL
 
   cat >"$target" <<EOF
-APP_ORIGIN=${PORTFOLIO_APP_ORIGIN}
-APP_ORIGINS=${PORTFOLIO_APP_ORIGINS:-$PORTFOLIO_APP_ORIGIN}
-PUBLIC_BASE_URL=${PORTFOLIO_PUBLIC_BASE_URL}
-SITE_NAME=${PORTFOLIO_SITE_NAME}
-ADMIN_EMAIL=${PORTFOLIO_ADMIN_EMAIL}
-ADMIN_PASSWORD=${PORTFOLIO_ADMIN_PASSWORD}
-SESSION_SECRET=${PORTFOLIO_SESSION_SECRET}
-DATABASE_URL=${PORTFOLIO_DATABASE_URL}
+APP_ORIGIN=$(compose_env_value "${PORTFOLIO_APP_ORIGIN}")
+APP_ORIGINS=$(compose_env_value "${PORTFOLIO_APP_ORIGINS:-$PORTFOLIO_APP_ORIGIN}")
+PUBLIC_BASE_URL=$(compose_env_value "${PORTFOLIO_PUBLIC_BASE_URL}")
+SITE_NAME=$(compose_env_value "${PORTFOLIO_SITE_NAME}")
+ADMIN_EMAIL=$(compose_env_value "${PORTFOLIO_ADMIN_EMAIL}")
+ADMIN_PASSWORD=$(compose_env_value "${PORTFOLIO_ADMIN_PASSWORD}")
+SESSION_SECRET=$(compose_env_value "${PORTFOLIO_SESSION_SECRET}")
+DATABASE_URL=$(compose_env_value "${PORTFOLIO_DATABASE_URL}")
 UPLOADS_DIR=/app/data/uploads
 PRIVATE_UPLOADS_DIR=/app/data/private_uploads
-MEDIA_BLOB_BACKEND=${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}
-MINIO_ENDPOINT=${PORTFOLIO_MINIO_ENDPOINT:-}
-MINIO_ACCESS_KEY=${PORTFOLIO_MINIO_ACCESS_KEY:-}
-MINIO_SECRET_KEY=${PORTFOLIO_MINIO_SECRET_KEY:-}
-MINIO_BUCKET=${PORTFOLIO_MINIO_BUCKET:-}
-MINIO_USE_SSL=${PORTFOLIO_MINIO_USE_SSL:-false}
-TRANSLATION_PROVIDER=${PORTFOLIO_TRANSLATION_PROVIDER:-}
-TRANSLATION_API_KEY=${PORTFOLIO_TRANSLATION_API_KEY:-}
-TRANSLATION_BASE_URL=${PORTFOLIO_TRANSLATION_BASE_URL:-}
-TRANSLATION_MODEL=${PORTFOLIO_TRANSLATION_MODEL:-}
-TRANSLATION_TIMEOUT_SECONDS=${PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS:-30}
+MEDIA_BLOB_BACKEND=$(compose_env_value "${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}")
+MINIO_ENDPOINT=$(compose_env_value "${PORTFOLIO_MINIO_ENDPOINT:-}")
+MINIO_ACCESS_KEY=$(compose_env_value "${PORTFOLIO_MINIO_ACCESS_KEY:-}")
+MINIO_SECRET_KEY=$(compose_env_value "${PORTFOLIO_MINIO_SECRET_KEY:-}")
+MINIO_BUCKET=$(compose_env_value "${PORTFOLIO_MINIO_BUCKET:-}")
+MINIO_USE_SSL=$(compose_env_value "${PORTFOLIO_MINIO_USE_SSL:-false}")
+TRANSLATION_PROVIDER=$(compose_env_value "${PORTFOLIO_TRANSLATION_PROVIDER:-}")
+TRANSLATION_API_KEY=$(compose_env_value "${PORTFOLIO_TRANSLATION_API_KEY:-}")
+TRANSLATION_BASE_URL=$(compose_env_value "${PORTFOLIO_TRANSLATION_BASE_URL:-}")
+TRANSLATION_MODEL=$(compose_env_value "${PORTFOLIO_TRANSLATION_MODEL:-}")
+TRANSLATION_TIMEOUT_SECONDS=$(compose_env_value "${PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS:-30}")
 PORT=8080
 PORT_HOST=${PORTFOLIO_PORT_HOST:-4300}
 EOF
@@ -191,6 +201,8 @@ parse_database_url() {
   local raw="$1"
   local without_scheme userinfo hostpath hostport dbquery user password host port dbname
 
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
   without_scheme="${raw#postgres://}"
   without_scheme="${without_scheme#postgresql://}"
   if [[ "$without_scheme" == "$raw" ]]; then
@@ -226,6 +238,15 @@ parse_database_url() {
   printf '%s\n%s\n%s\n%s\n%s\n' "$host" "$port" "$user" "$password" "$dbname"
 }
 
+host_command_db_host() {
+  local host="$1"
+  if [[ "$host" == "host.docker.internal" ]]; then
+    printf '127.0.0.1\n'
+    return 0
+  fi
+  printf '%s\n' "$host"
+}
+
 load_database_connection_parts() {
   local raw_url="${PORTFOLIO_DATABASE_URL:-}"
   local parsed=()
@@ -243,27 +264,29 @@ load_database_connection_parts() {
 run_schema_backup() {
   local backup_dir="$1"
   local sha="$2"
-  local stamp file strategy
+  local stamp file strategy host_db_host
 
   load_database_connection_parts
   strategy="$(require_pg_dump_or_container_fallback)"
   stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
   file="$backup_dir/${stamp}-${sha}-schema.sql"
+  host_db_host="$(host_command_db_host "$DB_HOST")"
 
   if [[ "$strategy" == "host" ]]; then
-    trace_command "pg_dump -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME --schema-only"
+    trace_command "pg_dump -h $host_db_host -p $DB_PORT -U $DB_USER -d $DB_NAME --schema-only"
     if is_true "${DRY_RUN:-0}"; then
       return 0
     fi
-    PGPASSWORD="$DB_PASSWORD" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --schema-only >"$file"
+    PGPASSWORD="$DB_PASSWORD" pg_dump -h "$host_db_host" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --schema-only >"$file"
     return 0
   fi
 
-  trace_command "docker run --rm postgres:16-alpine pg_dump --schema-only"
+  trace_command "docker run --rm --add-host host.docker.internal:host-gateway postgres:16-alpine pg_dump --schema-only"
   if is_true "${DRY_RUN:-0}"; then
     return 0
   fi
   docker run --rm \
+    --add-host host.docker.internal:host-gateway \
     -e PGPASSWORD="$DB_PASSWORD" \
     -e POSTGRES_HOST="$DB_HOST" \
     -e POSTGRES_PORT="$DB_PORT" \
@@ -278,27 +301,29 @@ run_schema_backup() {
 run_full_backup() {
   local backup_dir="$1"
   local sha="$2"
-  local stamp file strategy
+  local stamp file strategy host_db_host
 
   load_database_connection_parts
   strategy="$(require_pg_dump_or_container_fallback)"
   stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
   file="$backup_dir/${stamp}-${sha}-full.dump"
+  host_db_host="$(host_command_db_host "$DB_HOST")"
 
   if [[ "$strategy" == "host" ]]; then
-    trace_command "pg_dump -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -Fc"
+    trace_command "pg_dump -h $host_db_host -p $DB_PORT -U $DB_USER -d $DB_NAME -Fc"
     if is_true "${DRY_RUN:-0}"; then
       return 0
     fi
-    PGPASSWORD="$DB_PASSWORD" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Fc >"$file"
+    PGPASSWORD="$DB_PASSWORD" pg_dump -h "$host_db_host" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -Fc >"$file"
     return 0
   fi
 
-  trace_command "docker run --rm postgres:16-alpine pg_dump -Fc"
+  trace_command "docker run --rm --add-host host.docker.internal:host-gateway postgres:16-alpine pg_dump -Fc"
   if is_true "${DRY_RUN:-0}"; then
     return 0
   fi
   docker run --rm \
+    --add-host host.docker.internal:host-gateway \
     -e PGPASSWORD="$DB_PASSWORD" \
     -e POSTGRES_HOST="$DB_HOST" \
     -e POSTGRES_PORT="$DB_PORT" \

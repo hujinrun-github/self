@@ -122,9 +122,10 @@ Variables:
 | `PORTFOLIO_SITE_NAME` | Yes | Display name for the site, used by runtime config and metadata. Example: `Portfolio`. |
 | `PORTFOLIO_ADMIN_EMAIL` | Yes | Bootstrap admin email. It is only used to create the first admin when the admin table is empty. |
 | `PORTFOLIO_MEDIA_BLOB_BACKEND` | No | Media storage mode. Defaults to `local` when omitted. Set to `hybrid` when Markdown-imported media should use MinIO. |
-| `PORTFOLIO_MINIO_ENDPOINT` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | MinIO endpoint, for example `http://192.168.1.20:19000`. Used by deploy preflight and the application. |
+| `PORTFOLIO_MINIO_ENDPOINT` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | MinIO endpoint reachable from the app container. When MinIO is exposed on the same production host through `frps`, use `http://host.docker.internal:19000`; Compose maps that name to the host gateway. |
 | `PORTFOLIO_MINIO_BUCKET` | Required when `PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid` | Dedicated MinIO bucket for this project. Recommended value: `portfolio-media`. |
 | `PORTFOLIO_MINIO_USE_SSL` | No | Whether the MinIO client should force TLS when the endpoint has no URL scheme. Defaults to `false`. Use `true` for HTTPS-only MinIO endpoints without an `https://` prefix. |
+| `PORTFOLIO_MINIO_PREFLIGHT_NETWORK` | No | Docker network used by the temporary `minio/mc` deploy preflight container. Defaults to Docker's bridge network with `host.docker.internal:host-gateway` injected, matching the app container path. Set only for unusual network topologies. |
 | `PORTFOLIO_TRANSLATION_PROVIDER` | Required only for AI translation generation | Translation provider name. Use `deepseek` when enabling automatic translation generation. Leave empty if AI translation generation is not used. |
 | `PORTFOLIO_TRANSLATION_BASE_URL` | Required only for AI translation generation | Translation API base URL. For DeepSeek this is typically `https://api.deepseek.com`. |
 | `PORTFOLIO_TRANSLATION_MODEL` | Required only for AI translation generation | Model name passed to the translation provider. Example: `deepseek-v4-flash`. |
@@ -139,7 +140,7 @@ Secrets:
 | `PORTFOLIO_SSH_PORT` | No | SSH port. Use this when the server does not use the default `22`; keeping it configured explicitly is recommended. |
 | `PORTFOLIO_SSH_USER` | Yes | SSH username on the production host. This user must be able to access `PORTFOLIO_APP_DIR`, run `docker compose`, and write the `runtime` directories. |
 | `PORTFOLIO_SSH_PRIVATE_KEY` | Yes | Private key used by GitHub Actions to SSH into the production host. Store the private key body as the secret value. |
-| `PORTFOLIO_DATABASE_URL` | Yes | PostgreSQL connection string for the `portfolio` database. Example: `postgres://portfolio_app:<password>@192.168.1.20:19588/portfolio?sslmode=disable`. |
+| `PORTFOLIO_DATABASE_URL` | Yes | PostgreSQL connection string for the `portfolio` database. When PostgreSQL is exposed on the same production host through `frps`, use `host.docker.internal`, for example `postgres://portfolio_app:<password>@host.docker.internal:19588/portfolio?sslmode=disable`. |
 | `PORTFOLIO_DB_USER` | No, but recommended | Database username used by the backup commands. If omitted, the deploy script tries to parse the username from `PORTFOLIO_DATABASE_URL`. |
 | `PORTFOLIO_DB_PASSWORD` | No, but recommended | Database password used by the backup commands through `PGPASSWORD`. If omitted, the deploy script tries to parse the password from `PORTFOLIO_DATABASE_URL`. |
 | `PORTFOLIO_ADMIN_PASSWORD` | Yes | Bootstrap admin password. Must be at least 16 characters. After the first admin exists, changing this secret does not rotate the admin password. |

@@ -111,6 +111,36 @@ test_render_env_file_maps_portfolio_prefix() {
   rm -f "$target"
 }
 
+test_render_env_file_quotes_dollar_values_for_compose() {
+  local target
+  target="$(mktemp)"
+  PORTFOLIO_APP_ORIGIN="https://portfolio.example.com" \
+  PORTFOLIO_PUBLIC_BASE_URL="https://portfolio.example.com" \
+  PORTFOLIO_SITE_NAME="Portfolio" \
+  PORTFOLIO_ADMIN_EMAIL="admin@example.com" \
+  PORTFOLIO_ADMIN_PASSWORD='abc$yB5cHjQ1s' \
+  PORTFOLIO_SESSION_SECRET="0123456789abcdef0123456789abcdef" \
+  PORTFOLIO_DATABASE_URL="postgres://example" \
+    render_env_file "$target"
+  grep -F 'ADMIN_PASSWORD='"'"'abc$yB5cHjQ1s'"'" "$target" >/dev/null || fail "expected dollar value to be single-quoted for compose"
+  rm -f "$target"
+}
+
+test_schema_backup_maps_host_docker_internal_for_host_pg_dump() {
+  local backup_dir trace_file
+  backup_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+
+  PATH="$SCRIPT_DIR/test-bin:$ORIGINAL_PATH" \
+  TRACE_FILE="$trace_file" \
+  DRY_RUN=1 \
+  PORTFOLIO_DATABASE_URL="postgres://portfolio:secret@host.docker.internal:19588/portfolio?sslmode=disable" \
+    run_schema_backup "$backup_dir" "deadbeef" >/dev/null
+
+  grep -F "pg_dump -h 127.0.0.1 -p 19588 -U portfolio -d portfolio --schema-only" "$trace_file" >/dev/null || fail "expected host pg_dump to use localhost for host.docker.internal"
+  rm -rf "$backup_dir" "$trace_file"
+}
+
 test_compose_supports_wait_detects_flag() {
   PATH="$SCRIPT_DIR/test-bin:$ORIGINAL_PATH" \
   TRACE_FILE="$(mktemp)" \
@@ -148,6 +178,8 @@ main() {
   test_app_only_override_rejects_missing_migration_fingerprint
   test_app_only_override_rejects_changed_migration_fingerprint
   test_render_env_file_maps_portfolio_prefix
+  test_render_env_file_quotes_dollar_values_for_compose
+  test_schema_backup_maps_host_docker_internal_for_host_pg_dump
   test_compose_supports_wait_detects_flag
   test_assert_port_owner_ok_allows_existing_portfolio_app
   test_assert_port_owner_ok_rejects_foreign_listener

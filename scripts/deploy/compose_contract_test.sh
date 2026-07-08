@@ -67,6 +67,7 @@ assert_regex '^services:$'
 assert_regex '^[[:space:]]+portfolio-app:$'
 assert_contains 'container_name: portfolio-app'
 assert_contains 'restart: unless-stopped'
+assert_contains 'host.docker.internal=host-gateway'
 
 assert_contains 'published: "4300"'
 assert_contains 'target: 8080'

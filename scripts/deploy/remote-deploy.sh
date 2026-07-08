@@ -23,7 +23,7 @@ normalize_minio_endpoint_url() {
 }
 
 run_minio_preflight_if_needed() {
-  local endpoint object_key
+  local endpoint object_key network trace
 
   if [[ "${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}" != "hybrid" ]]; then
     return 0
@@ -40,12 +40,41 @@ run_minio_preflight_if_needed() {
   fi
 
   object_key="_healthchecks/${GITHUB_SHA:-manual}-$(date -u +%s).txt"
-  trace_command "docker run --rm --entrypoint /bin/sh minio/mc -lc minio preflight"
+  network="${PORTFOLIO_MINIO_PREFLIGHT_NETWORK:-default}"
+  trace="docker run --rm"
+  if [[ "$network" != "default" ]]; then
+    trace="$trace --network $network"
+  fi
+  trace="$trace --add-host host.docker.internal:host-gateway"
+  trace="$trace --entrypoint /bin/sh minio/mc -lc minio preflight"
+  trace_command "$trace"
   if is_true "${DRY_RUN:-0}"; then
     return 0
   fi
 
+  if [[ "$network" == "default" ]]; then
+    docker run --rm \
+      --add-host host.docker.internal:host-gateway \
+      -e MINIO_ENDPOINT="$endpoint" \
+      -e MINIO_ACCESS_KEY="${PORTFOLIO_MINIO_ACCESS_KEY}" \
+      -e MINIO_SECRET_KEY="${PORTFOLIO_MINIO_SECRET_KEY}" \
+      -e MINIO_BUCKET="${PORTFOLIO_MINIO_BUCKET}" \
+      -e HEALTHCHECK_OBJECT="$object_key" \
+      --entrypoint /bin/sh \
+      minio/mc \
+      -lc '
+        mc alias set portfolio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null &&
+        mc ls "portfolio/$MINIO_BUCKET" >/dev/null &&
+        printf healthcheck | mc pipe "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null &&
+        mc cat "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null &&
+        mc rm "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null
+      '
+    return 0
+  fi
+
   docker run --rm \
+    --network "$network" \
+    --add-host host.docker.internal:host-gateway \
     -e MINIO_ENDPOINT="$endpoint" \
     -e MINIO_ACCESS_KEY="${PORTFOLIO_MINIO_ACCESS_KEY}" \
     -e MINIO_SECRET_KEY="${PORTFOLIO_MINIO_SECRET_KEY}" \
