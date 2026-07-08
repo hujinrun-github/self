@@ -11,6 +11,8 @@ RUN npm --prefix web run build
 FROM golang:1.26.4-bookworm AS go-build
 
 WORKDIR /src
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -19,15 +21,12 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server
 
-FROM debian:bookworm-slim AS runtime
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates wget \
-    && rm -rf /var/lib/apt/lists/*
+FROM busybox:1.36.1-glibc AS runtime
 
 WORKDIR /app
 
 COPY --from=go-build /out/server ./server
+COPY --from=go-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=web-build /src/web/dist ./web/dist
 
 RUN mkdir -p /app/data/uploads /app/data/private_uploads

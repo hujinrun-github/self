@@ -169,7 +169,7 @@ main() {
     run_full_backup "runtime/backups" "$GITHUB_SHA"
   fi
 
-  run_logged docker compose config
+  run_quiet_logged docker compose config
   run_logged docker compose build
 
   if [[ "$wait_supported" -eq 1 ]]; then
