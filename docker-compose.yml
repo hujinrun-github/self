@@ -13,6 +13,8 @@ services:
       PRIVATE_UPLOADS_DIR: /app/data/private_uploads
     ports:
       - "${PORT_HOST:-4300}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./runtime/uploads:/app/data/uploads
       - ./runtime/private_uploads:/app/data/private_uploads
