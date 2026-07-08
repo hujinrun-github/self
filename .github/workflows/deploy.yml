@@ -97,6 +97,50 @@ jobs:
       PORTFOLIO_MINIO_SECRET_KEY: ${{ secrets.PORTFOLIO_MINIO_SECRET_KEY }}
       PORTFOLIO_TRANSLATION_API_KEY: ${{ secrets.PORTFOLIO_TRANSLATION_API_KEY }}
     steps:
+      - name: Validate deploy configuration
+        shell: bash
+        env:
+          PORTFOLIO_SSH_HOST: ${{ secrets.PORTFOLIO_SSH_HOST }}
+          PORTFOLIO_SSH_USER: ${{ secrets.PORTFOLIO_SSH_USER }}
+          PORTFOLIO_SSH_PRIVATE_KEY: ${{ secrets.PORTFOLIO_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+          require_env() {
+            local name="$1"
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is required in the portfolio-production GitHub Environment"
+              missing=1
+            fi
+          }
+
+          require_env PORTFOLIO_APP_DIR
+          require_env PORTFOLIO_APP_ORIGIN
+          require_env PORTFOLIO_PUBLIC_BASE_URL
+          require_env PORTFOLIO_SITE_NAME
+          require_env PORTFOLIO_ADMIN_EMAIL
+          require_env PORTFOLIO_DATABASE_URL
+          require_env PORTFOLIO_ADMIN_PASSWORD
+          require_env PORTFOLIO_SESSION_SECRET
+          require_env PORTFOLIO_SSH_HOST
+          require_env PORTFOLIO_SSH_USER
+          require_env PORTFOLIO_SSH_PRIVATE_KEY
+
+          if [[ "${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}" == "hybrid" ]]; then
+            require_env PORTFOLIO_MINIO_ENDPOINT
+            require_env PORTFOLIO_MINIO_BUCKET
+            require_env PORTFOLIO_MINIO_ACCESS_KEY
+            require_env PORTFOLIO_MINIO_SECRET_KEY
+          fi
+
+          if [[ -n "${PORTFOLIO_TRANSLATION_PROVIDER:-}" ]]; then
+            require_env PORTFOLIO_TRANSLATION_BASE_URL
+            require_env PORTFOLIO_TRANSLATION_MODEL
+            require_env PORTFOLIO_TRANSLATION_API_KEY
+          fi
+
+          exit "$missing"
+
       - name: Execute remote deploy
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -134,6 +178,21 @@ jobs:
           envs: GITHUB_SHA,RELEASE_TYPE,PORTFOLIO_APP_DIR,PORTFOLIO_APP_ORIGIN,PORTFOLIO_APP_ORIGINS,PORTFOLIO_PUBLIC_BASE_URL,PORTFOLIO_SITE_NAME,PORTFOLIO_ADMIN_EMAIL,PORTFOLIO_MEDIA_BLOB_BACKEND,PORTFOLIO_MINIO_ENDPOINT,PORTFOLIO_MINIO_BUCKET,PORTFOLIO_MINIO_USE_SSL,PORTFOLIO_TRANSLATION_PROVIDER,PORTFOLIO_TRANSLATION_BASE_URL,PORTFOLIO_TRANSLATION_MODEL,PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS,PORTFOLIO_PORT_HOST,PORTFOLIO_DATABASE_URL,PORTFOLIO_DB_USER,PORTFOLIO_DB_PASSWORD,PORTFOLIO_ADMIN_PASSWORD,PORTFOLIO_SESSION_SECRET,PORTFOLIO_MINIO_ACCESS_KEY,PORTFOLIO_MINIO_SECRET_KEY,PORTFOLIO_TRANSLATION_API_KEY
           script: |
             set -euo pipefail
-            cd "$PORTFOLIO_APP_DIR"
+            require_remote_env() {
+              local name="$1"
+              if [ -z "${!name:-}" ]; then
+                echo "$name is required on the remote deploy environment" >&2
+                exit 1
+              fi
+            }
+            require_remote_env PORTFOLIO_APP_DIR
+            if [ ! -d "$PORTFOLIO_APP_DIR" ]; then
+              echo "remote app dir does not exist: $PORTFOLIO_APP_DIR" >&2
+              exit 1
+            fi
+            if [ ! -f "$PORTFOLIO_APP_DIR/scripts/deploy/remote-deploy.sh" ]; then
+              echo "remote deploy script does not exist under PORTFOLIO_APP_DIR: $PORTFOLIO_APP_DIR" >&2
+              exit 1
+            fi
             # remote-deploy.sh pins the release with: git checkout --detach "$GITHUB_SHA"
-            bash scripts/deploy/remote-deploy.sh
+            bash "$PORTFOLIO_APP_DIR/scripts/deploy/remote-deploy.sh"
