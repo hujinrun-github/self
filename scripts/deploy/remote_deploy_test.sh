@@ -70,15 +70,13 @@ run_remote_deploy() {
   )
 }
 
-test_migration_release_stops_before_backup_and_pins_sha() {
+test_migration_release_stops_before_backup_and_deploy() {
   local app_dir trace_file stop_line schema_line full_line config_line build_line up_line
   app_dir="$(mktemp -d)"
   trace_file="$(mktemp)"
 
   run_remote_deploy "$app_dir" "$trace_file"
 
-  assert_trace_contains "$trace_file" "git fetch --all --tags --prune"
-  assert_trace_contains "$trace_file" "git checkout --detach deadbeef"
   assert_trace_contains "$trace_file" "docker compose stop portfolio-app"
   assert_trace_contains "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio --schema-only"
   assert_trace_contains "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio -Fc"
@@ -108,6 +106,7 @@ test_app_only_release_skips_backup_and_stop() {
   trace_file="$(mktemp)"
   mkdir -p "$app_dir/runtime"
   printf 'current-sha\n' > "$app_dir/runtime/.last_deployed_sha"
+  printf 'none\n' > "$app_dir/runtime/.last_migrations_fingerprint"
 
   RELEASE_TYPE="app-only" run_remote_deploy "$app_dir" "$trace_file"
 
@@ -141,10 +140,11 @@ test_dry_run_prints_planned_steps() {
   trace_file="$(mktemp)"
   mkdir -p "$app_dir/runtime"
   printf 'current-sha\n' > "$app_dir/runtime/.last_deployed_sha"
+  printf 'none\n' > "$app_dir/runtime/.last_migrations_fingerprint"
 
   output="$(RELEASE_TYPE="app-only" run_remote_deploy "$app_dir" "$trace_file")"
 
-  [[ "$output" == *"git fetch --all --tags --prune"* ]] || fail "expected dry run to print git fetch"
+  [[ "$output" == *"docker compose config"* ]] || fail "expected dry run to print compose config"
   [[ "$output" == *"docker compose up -d --remove-orphans --wait"* ]] || fail "expected dry run to print compose up"
 }
 
@@ -168,7 +168,7 @@ test_missing_app_dir_fails_clearly() {
 }
 
 main() {
-  test_migration_release_stops_before_backup_and_pins_sha
+  test_migration_release_stops_before_backup_and_deploy
   test_app_only_release_skips_backup_and_stop
   test_wait_fallback_polls_health_when_wait_not_supported
   test_dry_run_prints_planned_steps
