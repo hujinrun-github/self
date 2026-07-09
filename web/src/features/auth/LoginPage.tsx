@@ -1,4 +1,4 @@
-import { LogIn } from "lucide-react";
+import { FileText, Image, Languages, LogIn, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -31,22 +31,28 @@ export function LoginPage() {
     <main className={styles.authShell} data-testid="admin-login-shell">
       <section className={styles.authIntro}>
         <span className={styles.authBadge}>中文主语言后台</span>
-        <h1 className={styles.authTitle}>用中文维护主内容，再把英日版本作为辅助语言有序发布。</h1>
+        <h1 className={styles.authTitle}>
+          <span>先维护中文主内容，</span>
+          <span>再有序发布英日版本。</span>
+        </h1>
         <p className={styles.authDescription}>
-          后台以中文主表为准，英文和日文通过辅助语言流程生成、编辑与审核，确保线上每个页面都可控可发布。
+          以中文主表为准，英日内容走生成、编辑、审核流程，发布前保留完整控制。
         </p>
         <div className={styles.authFeatures}>
           <div className={styles.authFeature}>
+            <FileText aria-hidden="true" className={styles.authFeatureIcon} size={20} />
             <strong>资料与首页</strong>
-            <span>统一维护中文主叙事、联系方式与首页模块展示。</span>
+            <span>统一维护个人资料、联系方式与首页模块。</span>
           </div>
           <div className={styles.authFeature}>
+            <Languages aria-hidden="true" className={styles.authFeatureIcon} size={20} />
             <strong>辅助语言发布</strong>
-            <span>先生成英日草稿，再审核后决定是否公开对应语言页面。</span>
+            <span>生成草稿后再审核，决定是否公开对应语言页面。</span>
           </div>
           <div className={styles.authFeature}>
+            <Image aria-hidden="true" className={styles.authFeatureIcon} size={20} />
             <strong>媒体素材库</strong>
-            <span>图片素材一次上传，项目、写作和资料页都能复用。</span>
+            <span>图片素材一次上传，在项目、写作和资料页复用。</span>
           </div>
         </div>
       </section>
@@ -56,13 +62,19 @@ export function LoginPage() {
           <h2>后台登录</h2>
           <p>使用管理员账号进入中文主语言工作区。</p>
         </div>
-        {error ? <p className={styles.message}>{error}</p> : null}
+        {error ? (
+          <p aria-live="polite" className={styles.message}>
+            {error}
+          </p>
+        ) : null}
         <div className={styles.field}>
           <label htmlFor="admin-email">邮箱</label>
           <input
+            autoComplete="email"
             id="admin-email"
             name="email"
             onChange={(event) => setEmail(event.target.value)}
+            required
             type="email"
             value={email}
           />
@@ -70,9 +82,11 @@ export function LoginPage() {
         <div className={styles.field}>
           <label htmlFor="admin-password">密码</label>
           <input
+            autoComplete="current-password"
             id="admin-password"
             name="password"
             onChange={(event) => setPassword(event.target.value)}
+            required
             type="password"
             value={password}
           />
@@ -81,6 +95,10 @@ export function LoginPage() {
           <LogIn aria-hidden="true" size={18} />
           登录
         </button>
+        <div className={styles.authSecurityNote}>
+          <ShieldCheck aria-hidden="true" size={16} />
+          <span>管理员会话验证</span>
+        </div>
       </form>
     </main>
   );
