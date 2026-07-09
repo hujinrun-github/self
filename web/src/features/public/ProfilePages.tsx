@@ -6,6 +6,7 @@ import { MarkdownView } from "../../components/markdown/MarkdownView";
 import { apiFetch } from "../../lib/api";
 import { usePublicPageMeta } from "./head";
 import { coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
+import { ProfileAvatar } from "./ProfileAvatar";
 import { PublicLayout } from "./PublicLayout";
 import styles from "./Public.module.css";
 
@@ -75,7 +76,7 @@ export function BioPage() {
         </div>
         <div className={styles.heroPanel}>
           <div className={styles.heroGlow} />
-          <div className={styles.heroAvatar}>{initialsFor(displayName)}</div>
+          <ProfileAvatar mediaID={profile?.avatar_media_id} name={displayName} />
           <div className={styles.heroNote}>
             <strong>{copy.contact}</strong>
             <p className={styles.muted}>{profile?.email?.trim() || copy.contactDescription}</p>
@@ -172,7 +173,7 @@ export function ContactPage() {
         </div>
         <div className={styles.heroPanel}>
           <div className={styles.heroGlow} />
-          <div className={styles.heroAvatar}>{initialsFor(profile?.name?.trim() || copy.contact)}</div>
+          <ProfileAvatar mediaID={profile?.avatar_media_id} name={profile?.name?.trim() || copy.contact} />
           <div className={styles.heroNote}>
             <strong>{copy.contact}</strong>
             <p className={styles.muted}>{profile?.email?.trim() || copy.contactDescription}</p>
@@ -254,19 +255,4 @@ function paragraphize(value: string) {
 function textOrFallback(value: string | undefined, fallback: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : fallback;
-}
-
-function initialsFor(value: string) {
-  const words = value
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (words.length === 0) {
-    return "P";
-  }
-  return words
-    .slice(0, 2)
-    .map((word) => Array.from(word)[0] ?? "")
-    .join("")
-    .toUpperCase();
 }
