@@ -38,6 +38,38 @@ describe("admin API client", () => {
     expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("csrf-token");
     expect(init.credentials).toBe("include");
   });
+
+  it("refreshes a stale CSRF token and retries unsafe admin mutations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: "forbidden", message: "Invalid CSRF token" } }), {
+          headers: { "Content-Type": "application/json" },
+          status: 403,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrf_token: "fresh-csrf-token" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    setCSRFToken("stale-csrf-token");
+
+    await apiFetch("/api/admin/profile", {
+      body: JSON.stringify({ name: "Ada" }),
+      method: "PUT",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const firstInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(firstInit.headers).get("X-CSRF-Token")).toBe("stale-csrf-token");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/admin/csrf");
+    const retryInit = fetchMock.mock.calls[2]?.[1] as RequestInit;
+    expect(new Headers(retryInit.headers).get("X-CSRF-Token")).toBe("fresh-csrf-token");
+  });
 });
 
 describe("LoginPage", () => {
