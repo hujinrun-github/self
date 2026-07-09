@@ -5,12 +5,17 @@ import { APIRequestError, apiFetch } from "../../lib/api";
 import type { MediaVariant } from "../../lib/types";
 import styles from "./Admin.module.css";
 
+type AdminMediaVariant = Omit<MediaVariant, "url"> & {
+  path?: string;
+  url?: string;
+};
+
 type MediaItem = {
   file_name: string;
   id: number;
   mime_type?: string;
   referenced: boolean;
-  variants: Record<string, MediaVariant>;
+  variants: Record<string, AdminMediaVariant>;
 };
 
 export function MediaPage() {
@@ -118,20 +123,21 @@ export function MediaPage() {
           {items.map((item) => {
             const kind = mediaKind(item);
             const card = item.variants.card;
+            const cardSrc = mediaVariantURL(card);
             const markdownRef = mediaReference(item, kind);
             return (
               <article className={styles.mediaCard} key={item.id}>
-                {kind === "image" && card ? (
+                {kind === "image" && card && cardSrc ? (
                   <img
                     alt=""
                     className={styles.thumb}
                     height={card.height}
-                    src={card.url}
+                    src={cardSrc}
                     width={card.width}
                   />
                 ) : (
                   <div className={`${styles.thumb} ${styles.mediaPlaceholder}`}>
-                    <strong>{kind === "audio" ? "AUDIO" : "VIDEO"}</strong>
+                    <strong>{mediaKindLabel(kind)}</strong>
                     <span>{item.mime_type}</span>
                   </div>
                 )}
@@ -168,6 +174,20 @@ function mediaKind(item: MediaItem) {
     return "video";
   }
   return "image";
+}
+
+function mediaVariantURL(variant?: AdminMediaVariant) {
+  return variant?.url ?? variant?.path ?? "";
+}
+
+function mediaKindLabel(kind: "audio" | "image" | "video") {
+  if (kind === "audio") {
+    return "AUDIO";
+  }
+  if (kind === "video") {
+    return "VIDEO";
+  }
+  return "IMAGE";
 }
 
 function mediaReference(item: MediaItem, kind: "audio" | "image" | "video") {

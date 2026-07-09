@@ -375,8 +375,9 @@ export function ProfilePage() {
               />
               <Field
                 error={fieldErrors.avatar_media_id}
-                helpText="从媒体素材库复制 media://asset/12/card 这类引用，把中间的数字填到这里。留空则继续显示姓名首字。"
+                helpText="可以填 12，也可以直接粘贴 media://asset/12/card 或 Markdown 图片引用。留空则继续显示姓名首字。"
                 inputMode="numeric"
+                placeholder="media://asset/12/card 或 12"
                 label="首页头像媒体 ID"
                 onChange={(value) => setProfile({ ...profile, avatarMediaID: value })}
                 value={profile.avatarMediaID}
@@ -500,12 +501,28 @@ function profileFormFromResponse(body: ProfileResponse): ProfileForm {
 
 function profilePayload(profile: ProfileForm) {
   const { avatarMediaID, ...payload } = profile;
-  const trimmed = avatarMediaID.trim();
-  const avatarMediaIDValue = trimmed ? Number.parseInt(trimmed, 10) : null;
+  const avatarMediaIDValue = mediaIDFromInput(avatarMediaID);
   return {
     ...payload,
-    avatar_media_id: avatarMediaIDValue && avatarMediaIDValue > 0 ? avatarMediaIDValue : null,
+    avatar_media_id: avatarMediaIDValue,
   };
+}
+
+function mediaIDFromInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const numericID = Number.parseInt(trimmed, 10);
+    return numericID > 0 ? numericID : null;
+  }
+  const mediaRefMatch = trimmed.match(/media:\/\/asset\/(\d+)\/[a-zA-Z0-9_-]+/);
+  if (!mediaRefMatch) {
+    return null;
+  }
+  const refID = Number.parseInt(mediaRefMatch[1], 10);
+  return refID > 0 ? refID : null;
 }
 
 function profileTranslationsFrom(body: ProfileResponse): Record<TranslationLocale, ProfileTranslation> {
