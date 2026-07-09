@@ -995,69 +995,230 @@
 }
 
 .authShell {
+  position: relative;
+  isolation: isolate;
   display: grid;
-  min-height: 100vh;
-  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 460px);
-  gap: 28px;
-  align-items: stretch;
+  min-height: 100dvh;
+  grid-template-columns: minmax(0, 760px) minmax(360px, 432px);
+  justify-content: center;
+  gap: clamp(32px, 5vw, 76px);
+  align-items: center;
+  overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgb(96 165 250 / 0.22), transparent 34%),
-    radial-gradient(circle at 88% 16%, rgb(59 130 246 / 0.14), transparent 24%),
-    linear-gradient(180deg, #f8fbff 0%, #eef4ff 50%, #f7f9fc 100%);
-  padding: min(4vw, 42px);
+    linear-gradient(135deg, rgb(248 250 252 / 0.94), rgb(239 246 255 / 0.92)),
+    linear-gradient(180deg, #f8fbff 0%, #eef4ff 48%, #f8fafc 100%);
+  padding: clamp(24px, 4vw, 64px);
+}
+
+.authShell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    repeating-linear-gradient(90deg, rgb(37 99 235 / 0.055) 0 1px, transparent 1px 96px),
+    repeating-linear-gradient(180deg, rgb(15 23 42 / 0.045) 0 1px, transparent 1px 96px);
+  content: "";
+  mask-image: linear-gradient(90deg, rgb(0 0 0 / 0.72), rgb(0 0 0 / 0.2));
+}
+
+.authShell::after {
+  position: absolute;
+  z-index: -1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 36%;
+  background: linear-gradient(180deg, transparent, rgb(231 238 249 / 0.72));
+  content: "";
 }
 
 .authIntro {
+  position: relative;
   display: grid;
   align-content: center;
-  gap: 18px;
-  border: 1px solid var(--admin-border);
-  border-radius: 36px;
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.94), rgb(241 247 255 / 0.88));
-  box-shadow: var(--admin-shadow);
-  padding: min(6vw, 52px);
+  min-width: 0;
+  gap: 24px;
+  padding: 10px 0;
+}
+
+.authBadge,
+.authCard .brandBadge {
+  width: max-content;
+  border: 1px solid rgb(165 188 225 / 0.54);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.72);
+  color: #315a95;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 8px 11px;
+  text-transform: none;
 }
 
 .authTitle {
   margin: 0;
-  max-width: 10ch;
+  max-width: 11em;
   color: #0b1524;
-  font-size: clamp(2.7rem, 5vw, 4.6rem);
+  font-family:
+    "Aptos Display",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    "Segoe UI Variable",
+    sans-serif;
+  font-size: 4.2rem;
   font-weight: 900;
-  letter-spacing: -0.07em;
-  line-height: 0.92;
+  letter-spacing: 0;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.authTitle span {
+  display: block;
 }
 
 .authDescription {
-  max-width: 34rem;
-  font-size: 1rem;
+  max-width: 36rem;
+  color: #52677f;
+  font-size: 1.04rem;
+  line-height: 1.8;
 }
 
 .authFeatures {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 760px;
 }
 
 .authFeature {
+  position: relative;
   display: grid;
-  gap: 6px;
-  border: 1px solid rgb(194 213 239 / 0.68);
+  min-width: 0;
+  min-height: 152px;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid rgb(183 203 232 / 0.66);
   border-radius: 22px;
-  background: rgb(255 255 255 / 0.84);
-  padding: 16px 18px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.9), rgb(247 250 255 / 0.78)),
+    rgb(255 255 255 / 0.84);
+  box-shadow: 0 18px 40px rgb(94 120 154 / 0.1);
+  padding: 18px;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.authFeature:hover {
+  border-color: rgb(99 132 181 / 0.42);
+  box-shadow: 0 22px 46px rgb(94 120 154 / 0.15);
+  transform: translateY(-2px);
+}
+
+.authFeatureIcon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgb(188 209 237 / 0.68);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.86);
+  color: #2563eb;
+  padding: 10px;
 }
 
 .authFeature strong {
   color: #133152;
   font-size: 1rem;
   font-weight: 850;
+  line-height: 1.25;
+}
+
+.authFeature span {
+  color: #5b708a;
+  font-size: 0.93rem;
+  line-height: 1.65;
 }
 
 .authCard {
+  position: relative;
+  overflow: hidden;
   align-self: center;
   width: 100%;
-  max-width: 460px;
-  margin-left: auto;
+  max-width: 432px;
+  border-color: rgb(171 196 231 / 0.68);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(248 251 255 / 0.92)),
+    rgb(255 255 255 / 0.94);
+  box-shadow:
+    0 30px 80px rgb(64 88 122 / 0.16),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+  padding: 34px;
+}
+
+.authCard::before {
+  position: absolute;
+  top: 0;
+  right: 28px;
+  left: 28px;
+  height: 4px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(90deg, #1d4ed8, #5b8ee8 62%, #8db4f7);
+  content: "";
+}
+
+.authCardHeader {
+  gap: 9px;
+}
+
+.authCardHeader h2 {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.12;
+}
+
+.authCardHeader p {
+  color: #5c7088;
+  line-height: 1.7;
+}
+
+.authCard .field {
+  gap: 9px;
+}
+
+.authCard .field input {
+  min-height: 54px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.98);
+  font-size: 1rem;
+  padding: 14px 15px;
+}
+
+.authCard .field input:hover {
+  border-color: #b5c9e8;
+}
+
+.authCard .message {
+  border-color: rgb(248 113 113 / 0.36);
+  background: linear-gradient(180deg, rgb(255 241 242 / 0.96), rgb(255 228 230 / 0.88));
+  color: #be123c;
+}
+
+.authCard .button {
+  min-height: 54px;
+  border-radius: 14px;
+  font-size: 0.96rem;
+}
+
+.authSecurityNote {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #657892;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .modalBackdrop {
@@ -1207,6 +1368,10 @@
     grid-template-columns: 290px minmax(0, 1fr);
   }
 
+  .authTitle {
+    font-size: 3.7rem;
+  }
+
   .overviewGrid,
   .statsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1256,6 +1421,10 @@
     max-width: none;
   }
 
+  .authTitle {
+    max-width: 10em;
+  }
+
   .importGrid {
     grid-template-columns: 1fr;
   }
@@ -1301,8 +1470,31 @@
   .socialRow,
   .overviewGrid,
   .statsGrid,
-  .nav {
+  .nav,
+  .authFeatures {
     grid-template-columns: 1fr;
+  }
+
+  .authTitle {
+    max-width: 9.6em;
+    font-size: 2.65rem;
+    line-height: 1.12;
+  }
+
+  .authTitle span {
+    display: inline;
+  }
+
+  .authDescription {
+    font-size: 0.98rem;
+  }
+
+  .authFeature {
+    min-height: 0;
+  }
+
+  .authCard {
+    padding: 22px;
   }
 
   .tabList {
