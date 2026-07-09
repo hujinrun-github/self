@@ -146,6 +146,59 @@ describe("ProfilePage", () => {
     expect(await screen.findByText("Profile has changed")).toBeInTheDocument();
   });
 
+  it("saves the homepage avatar media id with the profile", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            avatar_media_id: 42,
+            bio: "",
+            email: "",
+            headline: "",
+            id: 1,
+            name: "Ada",
+            social_links: [],
+            summary: "",
+            updated_at: "2026-06-15T00:00:00Z",
+          }),
+          { headers: { "Content-Type": "application/json", ETag: '"abc"' }, status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            avatar_media_id: 99,
+            bio: "",
+            email: "",
+            headline: "",
+            id: 1,
+            name: "Ada",
+            social_links: [],
+            summary: "",
+            updated_at: "2026-06-15T00:00:01Z",
+          }),
+          { headers: { "Content-Type": "application/json", ETag: '"def"' }, status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithApp(<ProfilePage />);
+    const avatarInput = await screen.findByLabelText("首页头像媒体 ID");
+    expect(avatarInput).toHaveValue("42");
+
+    await userEvent.clear(avatarInput);
+    await userEvent.type(avatarInput, "99");
+    await userEvent.click(screen.getByRole("button", { name: /保存资料/i }));
+
+    const putInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(putInit.body))).toMatchObject({
+      avatar_media_id: 99,
+      name: "Ada",
+    });
+  });
+
   it("redirects unauthenticated admin routes to login", async () => {
     vi.stubGlobal(
       "fetch",

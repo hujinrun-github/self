@@ -1,5 +1,5 @@
 import { CheckCircle2, Languages, Plus, Save, Sparkles, Trash2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type InputHTMLAttributes, useEffect, useState } from "react";
 
 import { APIRequestError, apiFetch } from "../../lib/api";
 import styles from "./Admin.module.css";
@@ -29,6 +29,7 @@ type LocalizedSocialLink = {
 };
 
 type ProfileForm = {
+  avatarMediaID: string;
   bio: string;
   email: string;
   headline: string;
@@ -49,11 +50,13 @@ type ProfileTranslation = {
   translation_status: TranslationStatus;
 };
 
-type ProfileResponse = ProfileForm & {
+type ProfileResponse = Omit<ProfileForm, "avatarMediaID"> & {
+  avatar_media_id?: number | null;
   translations?: Partial<Record<TranslationLocale, Partial<ProfileTranslation>>>;
 };
 
 const emptyProfile: ProfileForm = {
+  avatarMediaID: "",
   bio: "",
   email: "",
   headline: "",
@@ -93,7 +96,7 @@ export function ProfilePage() {
     let cancelled = false;
     loadProfile().then(({ body, etag: nextEtag }) => {
       if (!cancelled) {
-        setProfile({ ...emptyProfile, ...body, social_links: body.social_links ?? [] });
+        setProfile(profileFormFromResponse(body));
         setTranslations(profileTranslationsFrom(body));
         setEtag(nextEtag);
       }
@@ -113,7 +116,7 @@ export function ProfilePage() {
 
   async function reloadProfile(successMessage?: string) {
     const { body, etag: nextEtag } = await loadProfile();
-    setProfile({ ...emptyProfile, ...body, social_links: body.social_links ?? [] });
+    setProfile(profileFormFromResponse(body));
     setTranslations(profileTranslationsFrom(body));
     setEtag(nextEtag);
     if (successMessage) {
@@ -128,7 +131,7 @@ export function ProfilePage() {
     setSaving(true);
     try {
       await apiFetch("/api/admin/profile", {
-        body: JSON.stringify(profile),
+        body: JSON.stringify(profilePayload(profile)),
         headers: { "If-Match": etag },
         method: "PUT",
       });
@@ -370,6 +373,14 @@ export function ProfilePage() {
                 onChange={(value) => setProfile({ ...profile, email: value })}
                 value={profile.email}
               />
+              <Field
+                error={fieldErrors.avatar_media_id}
+                helpText="从媒体素材库复制 media://asset/12/card 这类引用，把中间的数字填到这里。留空则继续显示姓名首字。"
+                inputMode="numeric"
+                label="首页头像媒体 ID"
+                onChange={(value) => setProfile({ ...profile, avatarMediaID: value })}
+                value={profile.avatarMediaID}
+              />
             </div>
             <Field
               error={fieldErrors.headline}
@@ -474,6 +485,29 @@ async function loadProfile() {
   return { body, etag: response.headers.get("ETag") ?? "" };
 }
 
+function profileFormFromResponse(body: ProfileResponse): ProfileForm {
+  return {
+    ...emptyProfile,
+    bio: body.bio ?? "",
+    email: body.email ?? "",
+    headline: body.headline ?? "",
+    name: body.name ?? "",
+    social_links: body.social_links ?? [],
+    summary: body.summary ?? "",
+    avatarMediaID: body.avatar_media_id ? String(body.avatar_media_id) : "",
+  };
+}
+
+function profilePayload(profile: ProfileForm) {
+  const { avatarMediaID, ...payload } = profile;
+  const trimmed = avatarMediaID.trim();
+  const avatarMediaIDValue = trimmed ? Number.parseInt(trimmed, 10) : null;
+  return {
+    ...payload,
+    avatar_media_id: avatarMediaIDValue && avatarMediaIDValue > 0 ? avatarMediaIDValue : null,
+  };
+}
+
 function profileTranslationsFrom(body: ProfileResponse): Record<TranslationLocale, ProfileTranslation> {
   const next = emptyTranslations();
   for (const locale of ["en", "ja"] as const satisfies readonly TranslationLocale[]) {
@@ -517,6 +551,7 @@ function Field({
   error,
   helpText,
   id,
+  inputMode,
   label,
   onChange,
   placeholder,
@@ -526,6 +561,7 @@ function Field({
   error?: string;
   helpText?: string;
   id?: string;
+  inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -539,7 +575,13 @@ function Field({
       {textarea ? (
         <textarea id={fieldID} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
       ) : (
-        <input id={fieldID} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} value={value} />
+        <input
+          id={fieldID}
+          inputMode={inputMode}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          value={value}
+        />
       )}
       {helpText ? <p className={styles.fieldHelp}>{helpText}</p> : null}
       {error ? <span className={styles.message}>{error}</span> : null}

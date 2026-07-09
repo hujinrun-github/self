@@ -151,6 +151,62 @@ describe("public locale routes", () => {
     expect(screen.queryByTestId("public-section-talks")).not.toBeInTheDocument();
   });
 
+  it("renders the configured profile avatar on the homepage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const rawURL = typeof input === "string" ? input : input.toString();
+        const url = new URL(rawURL, "http://localhost");
+        const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/home") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                experiences: [],
+                projects: [],
+                requested_locale: locale,
+                resolved_locale: locale,
+                talks: [],
+                writing: [],
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        if (url.pathname === "/api/site/profile") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                avatar_media_id: 42,
+                bio: "",
+                email: "",
+                headline: "Builder",
+                name: "Chinese Name",
+                requested_locale: locale,
+                resolved_locale: locale,
+                social_links: [],
+                summary: "",
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ items: [], requested_locale: locale, resolved_locale: locale }),
+            { headers: { "Content-Type": "application/json" }, status: 200 },
+          ),
+        );
+      }),
+    );
+    const memoryRouter = createMemoryRouter(routes, { initialEntries: ["/zh"] });
+
+    renderWithApp(<RouterProvider router={memoryRouter} />);
+
+    const avatar = await screen.findByRole("img", { name: "Chinese Name" });
+    expect(avatar).toHaveAttribute("src", "/media/42/avatar");
+  });
+
   it("renders localized list headings and empty states on ja routes", async () => {
     stubPublicFetch();
     const memoryRouter = createMemoryRouter(routes, { initialEntries: ["/ja/projects"] });

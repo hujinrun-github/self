@@ -221,6 +221,14 @@
   box-shadow: 0 24px 40px rgba(15, 23, 42, 0.08);
 }
 
+.heroAvatarImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .heroNote {
   position: absolute;
   right: 28px;

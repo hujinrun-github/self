@@ -12,6 +12,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { apiFetch } from "../../lib/api";
 import { usePublicPageMeta } from "./head";
 import { PublicLayout } from "./PublicLayout";
+import { ProfileAvatar } from "./ProfileAvatar";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import styles from "./Public.module.css";
 
@@ -46,6 +47,7 @@ type HomePayload = {
 };
 
 type ProfilePreviewPayload = {
+  avatar_media_id?: number | null;
   requested_locale?: string;
   resolved_locale?: string;
   fallback_from?: string;
@@ -64,6 +66,7 @@ const emptyHomePayload: HomePayload = {
 };
 
 const emptyProfilePayload: ProfilePreviewPayload = {
+  avatar_media_id: null,
   bio: "",
   email: "",
   headline: "",
@@ -140,7 +143,7 @@ export function HomePage() {
         </div>
         <div className={styles.heroPanel}>
           <div className={styles.heroGlow} />
-          <div className={styles.heroAvatar}>{initialsFor(displayName)}</div>
+          <ProfileAvatar mediaID={profile.avatar_media_id} name={displayName} />
           <div className={styles.heroNote}>
             <strong>{copy.now}</strong>
             <p className={styles.muted}>{copy.nowDescription}</p>
@@ -400,19 +403,4 @@ function paragraphize(value: string) {
 function textOrFallback(value: string | undefined, fallback: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : fallback;
-}
-
-function initialsFor(value: string) {
-  const words = value
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (words.length === 0) {
-    return "P";
-  }
-  return words
-    .slice(0, 2)
-    .map((word) => Array.from(word)[0] ?? "")
-    .join("")
-    .toUpperCase();
 }
