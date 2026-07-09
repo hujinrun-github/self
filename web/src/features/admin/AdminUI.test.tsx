@@ -189,7 +189,7 @@ describe("ProfilePage", () => {
     expect(avatarInput).toHaveValue("42");
 
     await userEvent.clear(avatarInput);
-    await userEvent.type(avatarInput, "99");
+    await userEvent.type(avatarInput, "![avatar](media://asset/99/card)");
     await userEvent.click(screen.getByRole("button", { name: /保存资料/i }));
 
     const putInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
@@ -741,7 +741,7 @@ describe("MediaPage", () => {
                 referenced: true,
                 variants: {
                   card: {
-                    url: "/uploads/ab/cd/card.jpg",
+                    path: "/uploads/ab/cd/card.jpg",
                     width: 800,
                     height: 450,
                     mime_type: "image/jpeg",
@@ -758,6 +758,7 @@ describe("MediaPage", () => {
     renderWithApp(<MediaPage />);
 
     await waitFor(() => expect(screen.getByText("cover.png")).toBeInTheDocument());
+    expect(document.querySelector("img")).toHaveAttribute("src", "/uploads/ab/cd/card.jpg");
     expect(screen.getByRole("button", { name: /删除 cover\.png/i })).toBeDisabled();
   });
 });
