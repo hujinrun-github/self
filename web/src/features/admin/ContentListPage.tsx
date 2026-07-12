@@ -1,4 +1,4 @@
-import { Archive, ExternalLink, Plus, Rocket } from "lucide-react";
+import { Archive, ExternalLink, Pencil, Plus, Rocket } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -142,6 +142,10 @@ export function ContentListPage({ resource }: { resource: string }) {
                   <p>{summaryFor(item)}</p>
                 </div>
                 <div className={styles.rowActions}>
+                  <Link className={styles.iconButton} to={`/admin/${typedResource}/${item.id}`}>
+                    <Pencil aria-hidden="true" size={17} />
+                    编辑
+                  </Link>
                   {publicURLFor(typedResource, item) ? (
                     <Link className={styles.iconButton} to={publicURLFor(typedResource, item) ?? "/"}>
                       <ExternalLink aria-hidden="true" size={17} />

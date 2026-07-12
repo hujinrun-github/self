@@ -23,9 +23,12 @@ export function adminLocaleRoleLabel(locale: AdminLocale) {
   return "日文辅助语言";
 }
 
+export function adminTranslationLanguageName(locale: TranslationLocale) {
+  return locale === "en" ? "英文" : "日文";
+}
+
 export function translationStatusLabel(status: TranslationStatus, stale = false) {
-  const base =
-    status === "reviewed" ? "已审核" : status === "ai_draft" ? "AI 草稿" : "未创建";
+  const base = status === "reviewed" ? (stale ? "已失效" : "已审核并发布") : status === "ai_draft" ? "AI 草稿" : "未创建";
   return stale ? `${base} · 待同步` : base;
 }
 

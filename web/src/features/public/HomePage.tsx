@@ -13,6 +13,7 @@ import { apiFetch } from "../../lib/api";
 import { usePublicPageMeta } from "./head";
 import { PublicLayout } from "./PublicLayout";
 import { ProfileAvatar } from "./ProfileAvatar";
+import { SocialLinkCard, type PublicSocialLink } from "./SocialLinkCard";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import styles from "./Public.module.css";
 
@@ -31,11 +32,7 @@ type Experience = {
   description: string;
 };
 
-type SocialLink = {
-  id: number;
-  label: string;
-  url: string;
-};
+type SocialLink = PublicSocialLink;
 
 type HomePayload = {
   requested_locale?: string;
@@ -120,17 +117,23 @@ export function HomePage() {
   return (
     <PublicLayout>
       <section className={styles.hero} data-testid="public-hero">
-        <div className={styles.heroCopy}>
+        <div className={`${styles.heroCopy} ${styles.homeHeroCopy}`}>
           <div className={styles.sectionLabel}>
             <Sparkles aria-hidden="true" size={16} />
             <span>{copy.now}</span>
           </div>
           <h1>{displayName}</h1>
           <p className={styles.heroHeadline}>{displayHeadline}</p>
-          <div className={styles.stack}>
-            <p className={styles.lede}>{displaySummary}</p>
-            <p className={styles.bodyText}>{copy.homeDescription}</p>
+          <div className={styles.heroIntro}>
+            <p className={`${styles.lede} ${styles.heroSummary}`} data-testid="home-profile-summary">
+              {displaySummary}
+            </p>
+            <Link className={styles.heroIntroLink} to={withLocale(locale, "/bio")}>
+              {copy.aboutMore}
+              <ArrowRight aria-hidden="true" size={14} />
+            </Link>
           </div>
+          <p className={styles.heroMeta}>{copy.homeDescription}</p>
           <div className={styles.actions}>
             <Link className={styles.button} to={withLocale(locale, "/contact")}>
               {copy.contact}
@@ -140,6 +143,13 @@ export function HomePage() {
               <ArrowRight aria-hidden="true" size={16} />
             </Link>
           </div>
+          {profile.social_links.length ? (
+            <div aria-label="社交链接" className={styles.socialStrip}>
+              {profile.social_links.map((link) => (
+                <SocialLinkCard key={link.id} link={link} />
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className={styles.heroPanel}>
           <div className={styles.heroGlow} />
