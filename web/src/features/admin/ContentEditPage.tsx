@@ -1,16 +1,19 @@
-import { ArrowLeft, CheckCircle2, Languages, Save, Sparkles, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Save, X } from "lucide-react";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { APIRequestError, apiFetch } from "../../lib/api";
 import styles from "./Admin.module.css";
 import {
   adminLocaleRoleLabel,
   adminLocaleTabLabel,
+  adminTranslationLanguageName,
   translationStatusLabel,
   type TranslationLocale,
 } from "./adminI18n";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { translationActionError } from "./translationErrors";
+import { TranslationWorkflow } from "./TranslationWorkflow";
 import { WritingImportDialog } from "./WritingImportDialog";
 
 type Resource = "experience" | "projects" | "talks" | "writing";
@@ -101,13 +104,17 @@ const emptyTranslationMap = (): Record<TranslationLocale, TranslationState> => (
 });
 
 export function ContentEditPage({ resource }: { resource: string }) {
-  const typedResource = resource as Resource;
   const { id } = useParams();
+  return <ContentEditForm id={id} key={`${resource}:${id ?? "new"}`} resource={resource} />;
+}
+
+function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
+  const typedResource = resource as Resource;
   const isEditing = Boolean(id);
-  const supportsTranslations = isEditing;
   const config = useMemo(() => configFor(typedResource), [typedResource]);
   const navigate = useNavigate();
-  const [activeLocale, setActiveLocale] = useState<Locale>("zh");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeLocale, setActiveLocale] = useState<Locale>(() => localeFromSearchParam(searchParams.get("locale")));
   const [detailStatus, setDetailStatus] = useState<CreatedContent["status"] | null>(null);
   const [form, setForm] = useState<ContentForm>(emptyForm);
   const [message, setMessage] = useState("");
@@ -119,16 +126,12 @@ export function ContentEditPage({ resource }: { resource: string }) {
     typedResource === "writing" && isEditing && activeLocale === "zh" && detailStatus === "draft";
 
   useEffect(() => {
-    if (!isEditing) {
-      setActiveLocale("zh");
-      setDetailStatus(null);
-      setForm(emptyForm);
-      setTranslations(emptyTranslationMap());
+    if (!id) {
       return;
     }
 
     let cancelled = false;
-    loadDetail(typedResource, id ?? "")
+    loadDetail(typedResource, id)
       .then((detail) => {
         if (cancelled) {
           return;
@@ -146,11 +149,13 @@ export function ContentEditPage({ resource }: { resource: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, isEditing, typedResource]);
+  }, [id, typedResource]);
 
   const currentTranslation = translationLocale ? translations[translationLocale] : null;
   const translationStage = currentTranslation
-    ? translationStatusLabel(currentTranslation.translation_status, currentTranslation.stale)
+    ? isEditing
+      ? translationStatusLabel(currentTranslation.translation_status, currentTranslation.stale)
+      : "等待中文草稿"
     : "中文主内容";
 
   async function reloadDetail(successMessage?: string) {
@@ -186,7 +191,11 @@ export function ContentEditPage({ resource }: { resource: string }) {
           method: "PATCH",
         });
       }
-      setMessage(form.publishNow ? "已保存并发布。" : isEditing ? "修改已保存。" : "草稿已保存。");
+      if (!isEditing) {
+        navigate(`/admin/${typedResource}/${saved.id}`, { replace: true });
+        return;
+      }
+      setMessage(form.publishNow ? "已保存并发布。" : "修改已保存。");
       window.setTimeout(() => navigate(`/admin/${typedResource}`), 500);
     } catch (error) {
       setMessage(error instanceof APIRequestError ? error.message : "保存内容失败。");
@@ -195,7 +204,7 @@ export function ContentEditPage({ resource }: { resource: string }) {
     }
   }
 
-  async function saveTranslation(locale: TranslationLocale, successMessage = "辅助语言已保存。") {
+  async function saveTranslation(locale: TranslationLocale, successMessage = "辅助语言草稿已保存。") {
     if (!id) {
       return;
     }
@@ -234,7 +243,27 @@ export function ContentEditPage({ resource }: { resource: string }) {
       });
       await reloadDetail("辅助语言已生成。");
     } catch (error) {
-      setMessage(error instanceof APIRequestError ? error.message : "生成辅助语言失败。");
+      setMessage(translationActionError(error, "生成辅助语言失败。"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createPrimaryForTranslation(locale: TranslationLocale) {
+    if (!form.title.trim()) {
+      setMessage("请先返回中文页填写标题，再继续添加辅助语言。");
+      return;
+    }
+    setMessage("");
+    setSaving(true);
+    try {
+      const saved = await apiFetch<CreatedContent>(`/api/admin/${typedResource}`, {
+        body: JSON.stringify(payloadFor(typedResource, form)),
+        method: "POST",
+      });
+      navigate(`/admin/${typedResource}/${saved.id}?locale=${locale}`, { replace: true });
+    } catch (error) {
+      setMessage(error instanceof APIRequestError ? error.message : "保存中文主内容失败。");
     } finally {
       setSaving(false);
     }
@@ -256,7 +285,7 @@ export function ContentEditPage({ resource }: { resource: string }) {
         headers: { "If-Match": draft.etag },
         method: "POST",
       });
-      await reloadDetail("辅助语言已审核。");
+      await reloadDetail("辅助语言已审核并发布。");
     } catch (error) {
       setMessage(error instanceof APIRequestError ? error.message : "审核辅助语言失败。");
     } finally {
@@ -269,11 +298,14 @@ export function ContentEditPage({ resource }: { resource: string }) {
   }
 
   function updateTitle(value: string) {
-    setForm((current) => ({
-      ...current,
-      slug: current.slug || slugify(value),
-      title: value,
-    }));
+    setForm((current) => {
+      const generatedSlug = slugify(current.title);
+      return {
+        ...current,
+        slug: !current.slug || current.slug === generatedSlug ? slugify(value) : current.slug,
+        title: value,
+      };
+    });
   }
 
   function updateTranslationField<Key extends keyof TranslationState>(
@@ -295,6 +327,18 @@ export function ContentEditPage({ resource }: { resource: string }) {
     }));
   }
 
+  function changeLocale(locale: Locale) {
+    setActiveLocale(locale);
+    setMessage("");
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (locale === "zh") {
+      nextSearchParams.delete("locale");
+    } else {
+      nextSearchParams.set("locale", locale);
+    }
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
   return (
     <form className={`${styles.panel} ${styles.stack}`} onSubmit={onSubmit}>
       <div className={styles.pageHeader}>
@@ -306,77 +350,31 @@ export function ContentEditPage({ resource }: { resource: string }) {
           <h1>{isEditing ? config.editTitle : config.newTitle}</h1>
           <p>{config.description}</p>
         </div>
-        <div className={styles.headerActions}>
-          {supportsTranslations && currentTranslation ? (
-            <>
-              <button
-                className={styles.button}
-                disabled={saving}
-                onClick={() => translationLocale && void generateTranslation(translationLocale)}
-                type="button"
-              >
-                <Sparkles aria-hidden="true" size={17} />
-                {currentTranslation.exists ? "重新生成辅助语言" : "生成辅助语言"}
+        {!currentTranslation ? (
+          <div className={styles.headerActions}>
+            {canOverwriteImport ? (
+              <button className={styles.button} disabled={saving} onClick={() => setShowImport(true)} type="button">
+                导入本地 Markdown
               </button>
-              <button
-                className={styles.button}
-                disabled={saving || !currentTranslation.exists || !currentTranslation.etag}
-                onClick={() => translationLocale && void markReviewed(translationLocale)}
-                type="button"
-              >
-                <CheckCircle2 aria-hidden="true" size={17} />
-                标记为已审核
-              </button>
-              {hasLocalizedSlug(typedResource) && currentTranslation.translation_status === "reviewed" ? (
-                <button
-                  className={styles.button}
-                  disabled={saving}
-                  onClick={() =>
-                    translationLocale &&
-                    void saveTranslation(translationLocale, "已取消发布辅助语言，可以继续调整 slug 并保存草稿。")
-                  }
-                  type="button"
-                >
-                  <Languages aria-hidden="true" size={17} />
-                  取消发布辅助语言后编辑 slug
-                </button>
-              ) : null}
-              <button
-                className={`${styles.button} ${styles.primary}`}
-                disabled={saving}
-                onClick={() => translationLocale && void saveTranslation(translationLocale)}
-                type="button"
-              >
+            ) : null}
+            <label className={styles.switch}>
+              <input
+                checked={form.publishNow}
+                onChange={(event) => update("publishNow", event.target.checked)}
+                type="checkbox"
+              />
+              <span>立即发布</span>
+            </label>
+            <button className={`${styles.button} ${styles.primary}`} disabled={saving} type="submit">
+              {form.publishNow ? (
+                <CheckCircle2 aria-hidden="true" size={18} />
+              ) : (
                 <Save aria-hidden="true" size={18} />
-                {saving ? "保存中..." : "保存辅助语言"}
-              </button>
-            </>
-          ) : (
-            <>
-              {canOverwriteImport ? (
-                <button className={styles.button} disabled={saving} onClick={() => setShowImport(true)} type="button">
-                  导入本地 Markdown
-                </button>
-              ) : null}
-              <label className={styles.switch}>
-                <input
-                  checked={form.publishNow}
-                  onChange={(event) => update("publishNow", event.target.checked)}
-                  type="checkbox"
-                />
-                <span>立即发布</span>
-              </label>
-              <button className={`${styles.button} ${styles.primary}`} disabled={saving} type="submit">
-                {form.publishNow ? (
-                  <CheckCircle2 aria-hidden="true" size={18} />
-                ) : (
-                  <Save aria-hidden="true" size={18} />
-                )}
-                {saving ? "保存中..." : form.publishNow ? "保存并发布" : "保存草稿"}
-              </button>
-            </>
-          )}
-        </div>
+              )}
+              {saving ? "保存中..." : form.publishNow ? "保存并发布" : "保存草稿"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.overviewGrid}>
@@ -387,7 +385,9 @@ export function ContentEditPage({ resource }: { resource: string }) {
           </strong>
           <p className={styles.overviewNote}>
             {translationLocale
-              ? "辅助语言内容会独立保存，只有审核通过后才会进入公开路由。"
+              ? isEditing
+                ? "辅助语言内容会独立保存，只有审核通过后才会进入公开路由。"
+                : "先保存中文主内容，随后即可生成、校对并发布当前辅助语言。"
               : "这里编辑的是中文主内容，它会驱动路由、回退和辅助语言生成。"}
           </p>
         </article>
@@ -401,18 +401,42 @@ export function ContentEditPage({ resource }: { resource: string }) {
         </article>
       </div>
 
-      {supportsTranslations ? <LocaleTabs activeLocale={activeLocale} onChange={setActiveLocale} /> : null}
+      <LocaleTabs activeLocale={activeLocale} onChange={changeLocale} />
 
       {message ? <p className={styles.message}>{message}</p> : null}
 
-      {supportsTranslations && currentTranslation ? (
-        <TranslationFields
-          config={config}
-          locale={translationLocale!}
-          resource={typedResource}
-          translation={currentTranslation}
-          update={(key, value) => translationLocale && updateTranslationField(translationLocale, key, value)}
-        />
+      {currentTranslation ? (
+        isEditing ? (
+          <>
+            <TranslationWorkflow
+              busy={saving}
+              locale={translationLocale!}
+              onGenerate={() => translationLocale && void generateTranslation(translationLocale)}
+              onReview={() => translationLocale && void markReviewed(translationLocale)}
+              onSave={() => translationLocale && void saveTranslation(translationLocale)}
+              onUnpublish={() =>
+                translationLocale &&
+                void saveTranslation(translationLocale, "已取消发布辅助语言，可以继续修改并保存草稿。")
+              }
+              translation={currentTranslation}
+            />
+            <TranslationFields
+              config={config}
+              locale={translationLocale!}
+              resource={typedResource}
+              translation={currentTranslation}
+              update={(key, value) => translationLocale && updateTranslationField(translationLocale, key, value)}
+            />
+          </>
+        ) : (
+          <TranslationSourceSetup
+            busy={saving}
+            locale={translationLocale!}
+            onBack={() => changeLocale("zh")}
+            onSave={() => translationLocale && void createPrimaryForTranslation(translationLocale)}
+            resourceLabel={config.resourceLabel}
+          />
+        )
       ) : typedResource === "experience" ? (
         <ExperienceFields form={form} update={update} updateTitle={updateTitle} />
       ) : (
@@ -437,6 +461,44 @@ export function ContentEditPage({ resource }: { resource: string }) {
         />
       ) : null}
     </form>
+  );
+}
+
+function TranslationSourceSetup({
+  busy,
+  locale,
+  onBack,
+  onSave,
+  resourceLabel,
+}: {
+  busy: boolean;
+  locale: TranslationLocale;
+  onBack: () => void;
+  onSave: () => void;
+  resourceLabel: string;
+}) {
+  const languageName = adminTranslationLanguageName(locale);
+  return (
+    <section aria-label={`${languageName}翻译准备`} className={styles.translationWorkflow}>
+      <div className={styles.translationWorkflowHeader}>
+        <div className={styles.translationWorkflowCopy}>
+          <h2>先保存中文主内容</h2>
+          <span>AI 翻译需要先创建一条中文主内容。</span>
+          <span>{`保存后会自动进入${resourceLabel}的${languageName}翻译页。`}</span>
+        </div>
+        <span className={styles.statusBadge}>等待中文草稿</span>
+      </div>
+      <div className={styles.translationWorkflowActions}>
+        <button className={styles.button} disabled={busy} onClick={onBack} type="button">
+          <ArrowLeft aria-hidden="true" size={17} />
+          返回中文填写
+        </button>
+        <button className={`${styles.button} ${styles.primary}`} disabled={busy} onClick={onSave} type="button">
+          <Save aria-hidden="true" size={17} />
+          {busy ? "保存中..." : `保存中文草稿并继续${languageName}翻译`}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -488,12 +550,7 @@ function TranslationFields({
           <div className={styles.sectionHeader}>
             <div>
               <h2>{adminLocaleRoleLabel(locale)}</h2>
-              <p>辅助语言草稿独立保存，不会直接改动中文主内容。</p>
-            </div>
-            <div className={styles.localeMeta}>
-              <span className={`${styles.statusBadge} ${translation.stale ? styles.statusStale : ""}`}>
-                {translationStatusLabel(translation.translation_status, translation.stale)}
-              </span>
+              <p>AI 草稿可以继续人工修改，保存后不会立即公开。</p>
             </div>
           </div>
           <div className={styles.grid}>
@@ -520,12 +577,7 @@ function TranslationFields({
         <div className={styles.sectionHeader}>
           <div>
             <h2>{adminLocaleRoleLabel(locale)}</h2>
-            <p>辅助语言草稿独立保存，不会直接改动中文主内容。</p>
-          </div>
-          <div className={styles.localeMeta}>
-            <span className={`${styles.statusBadge} ${translation.stale ? styles.statusStale : ""}`}>
-              {translationStatusLabel(translation.translation_status, translation.stale)}
-            </span>
+            <p>AI 草稿可以继续人工修改，保存后不会立即公开。</p>
           </div>
         </div>
         <div className={styles.grid}>
@@ -1072,6 +1124,10 @@ function hasLocalizedSEO(resource: Resource) {
 
 function hasLocalizedSlug(resource: Resource) {
   return resource === "projects" || resource === "writing" || resource === "talks";
+}
+
+function localeFromSearchParam(value: string | null): Locale {
+  return value === "en" || value === "ja" ? value : "zh";
 }
 
 function objectValue(value: unknown) {

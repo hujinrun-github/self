@@ -1,5 +1,7 @@
 import { Maximize2, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import type { ICommand } from "@uiw/react-md-editor/nohighlight";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "@uiw/react-markdown-preview/markdown.css";
 
@@ -60,30 +62,33 @@ export function MarkdownEditor({
           <EditorSurface compact={compact} id={id} onChange={onChange} value={value} />
         </div>
       )}
-      {fullscreen ? (
-        <div
-          aria-label={`${label} fullscreen editor`}
-          aria-modal="true"
-          className={styles.fullscreenBackdrop}
-          role="dialog"
-        >
-          <div className={styles.fullscreenPanel} data-color-mode="light">
-            <div className={styles.fullscreenHeader}>
-              <div>
-                <strong>{label}</strong>
-                <span>{description ?? "Fullscreen Markdown editor"}</span>
+      {fullscreen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label={`${label} fullscreen editor`}
+              aria-modal="true"
+              className={styles.fullscreenBackdrop}
+              role="dialog"
+            >
+              <div className={styles.fullscreenPanel} data-color-mode="light">
+                <div className={styles.fullscreenHeader}>
+                  <div>
+                    <strong>{label}</strong>
+                    <span>{description ?? "Fullscreen Markdown editor"}</span>
+                  </div>
+                  <button autoFocus className={styles.button} onClick={() => setFullscreen(false)} type="button">
+                    <X aria-hidden="true" size={17} />
+                    Exit fullscreen
+                  </button>
+                </div>
+                <div className={`${styles.markdownEditor} ${styles.fullscreenEditor}`}>
+                  <EditorSurface compact={compact} fullscreen id={`${id}-fullscreen`} onChange={onChange} value={value} />
+                </div>
               </div>
-              <button className={styles.button} onClick={() => setFullscreen(false)} type="button">
-                <X aria-hidden="true" size={17} />
-                Exit fullscreen
-              </button>
-            </div>
-            <div className={`${styles.markdownEditor} ${styles.fullscreenEditor}`}>
-              <EditorSurface compact={compact} fullscreen id={`${id}-fullscreen`} onChange={onChange} value={value} />
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -104,7 +109,8 @@ function EditorSurface({
   return (
     <Suspense fallback={<div className={styles.editorLoading}>Loading editor...</div>}>
       <MDEditor
-        height={fullscreen ? "calc(100vh - 128px)" : compact ? 360 : 420}
+        commandsFilter={hideNativeFullscreen}
+        height={fullscreen ? "100%" : compact ? 360 : 420}
         onChange={(nextValue) => onChange(nextValue ?? "")}
         preview={compact ? "edit" : "live"}
         textareaProps={{
@@ -116,6 +122,10 @@ function EditorSurface({
       />
     </Suspense>
   );
+}
+
+function hideNativeFullscreen(command: ICommand): false | ICommand {
+  return command.keyCommand === "fullscreen" ? false : command;
 }
 
 function useMediaQuery(query: string) {

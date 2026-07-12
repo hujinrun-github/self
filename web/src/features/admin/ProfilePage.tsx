@@ -1,4 +1,4 @@
-import { CheckCircle2, Languages, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, Save, Trash2 } from "lucide-react";
 import { type FormEvent, type InputHTMLAttributes, useEffect, useState } from "react";
 
 import { APIRequestError, apiFetch } from "../../lib/api";
@@ -6,9 +6,10 @@ import styles from "./Admin.module.css";
 import {
   adminLocaleRoleLabel,
   adminLocaleTabLabel,
-  translationStatusLabel,
   type TranslationLocale,
 } from "./adminI18n";
+import { translationActionError } from "./translationErrors";
+import { TranslationWorkflow } from "./TranslationWorkflow";
 
 type Locale = "zh" | TranslationLocale;
 type TranslationStatus = "empty" | "ai_draft" | "reviewed";
@@ -89,6 +90,7 @@ export function ProfilePage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState<ProfileForm>(emptyProfile);
   const [saving, setSaving] = useState(false);
+  const [uploadingSocialIndex, setUploadingSocialIndex] = useState<number | null>(null);
   const [translations, setTranslations] = useState<Record<TranslationLocale, ProfileTranslation>>(emptyTranslations);
   const translationLocale = activeLocale === "zh" ? null : activeLocale;
 
@@ -108,10 +110,10 @@ export function ProfilePage() {
 
   const currentTranslation = translationLocale ? translations[translationLocale] : null;
   const reviewedLocales = (["en", "ja"] as const).filter(
-    (locale) => translations[locale].translation_status === "reviewed",
+    (locale) => translations[locale].translation_status === "reviewed" && !translations[locale].stale,
   ).length;
   const draftLocales = (["en", "ja"] as const).filter(
-    (locale) => translations[locale].translation_status === "ai_draft",
+    (locale) => translations[locale].translation_status === "ai_draft" || translations[locale].stale,
   ).length;
 
   async function reloadProfile(successMessage?: string) {
@@ -190,7 +192,7 @@ export function ProfilePage() {
       });
       await reloadProfile("辅助语言已生成");
     } catch (error) {
-      setMessage(error instanceof APIRequestError ? error.message : "生成辅助语言失败");
+      setMessage(translationActionError(error, "生成辅助语言失败"));
     } finally {
       setSaving(false);
     }
@@ -209,11 +211,42 @@ export function ProfilePage() {
         headers: { "If-Match": translation.etag },
         method: "POST",
       });
-      await reloadProfile("辅助语言已审核");
+      await reloadProfile("辅助语言已审核并发布");
     } catch (error) {
       setMessage(error instanceof APIRequestError ? error.message : "审核辅助语言失败");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function uploadSocialImage(index: number, file: File) {
+    const body = new FormData();
+    body.append("file", file);
+    setMessage("");
+    setUploadingSocialIndex(index);
+    try {
+      const uploaded = await apiFetch<{ id: number }>("/api/admin/media", {
+        body,
+        method: "POST",
+      });
+      setProfile((current) => {
+        const link = current.social_links[index];
+        if (!link) {
+          return current;
+        }
+        return {
+          ...current,
+          social_links: replaceLink(current.social_links, index, {
+            ...link,
+            icon: `media://asset/${uploaded.id}/avatar`,
+          }),
+        };
+      });
+      setMessage("社交图片已上传，请保存资料。");
+    } catch (error) {
+      setMessage(error instanceof APIRequestError ? error.message : "上传社交图片失败");
+    } finally {
+      setUploadingSocialIndex(null);
     }
   }
 
@@ -255,58 +288,14 @@ export function ProfilePage() {
           <h1>资料</h1>
           <p>维护全站共享的中文主资料，并为英文、日文补充辅助语言版本。</p>
         </div>
-        <div className={styles.headerActions}>
-          {currentTranslation ? (
-            <>
-              <button
-                className={styles.button}
-                disabled={saving}
-                onClick={() => translationLocale && void generateTranslation(translationLocale)}
-                type="button"
-              >
-                <Sparkles aria-hidden="true" size={17} />
-                {currentTranslation.exists ? "重新生成辅助语言" : "生成辅助语言"}
-              </button>
-              <button
-                className={styles.button}
-                disabled={saving || !currentTranslation.exists || !currentTranslation.etag}
-                onClick={() => translationLocale && void markReviewed(translationLocale)}
-                type="button"
-              >
-                <CheckCircle2 aria-hidden="true" size={17} />
-                标记为已审核
-              </button>
-              {currentTranslation.translation_status === "reviewed" ? (
-                <button
-                  className={styles.button}
-                  disabled={saving}
-                  onClick={() =>
-                    translationLocale &&
-                    void saveTranslation(translationLocale, "已取消发布辅助语言，可以继续修改译文。")
-                  }
-                  type="button"
-                >
-                  <Languages aria-hidden="true" size={17} />
-                  取消发布辅助语言
-                </button>
-              ) : null}
-              <button
-                className={`${styles.button} ${styles.primary}`}
-                disabled={saving}
-                onClick={() => translationLocale && void saveTranslation(translationLocale)}
-                type="button"
-              >
-                <Save aria-hidden="true" size={18} />
-                {saving ? "保存中..." : "保存辅助语言"}
-              </button>
-            </>
-          ) : (
+        {!currentTranslation ? (
+          <div className={styles.headerActions}>
             <button className={`${styles.button} ${styles.primary}`} disabled={saving} type="submit">
               <Save aria-hidden="true" size={18} />
               {saving ? "保存中..." : "保存资料"}
             </button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.overviewGrid}>
@@ -316,11 +305,11 @@ export function ProfilePage() {
           <p className={styles.overviewNote}>资料基础信息保留在中文主表，只有需要时才扩展到英日辅助语言。</p>
         </article>
         <article className={styles.metric}>
-          <span>已审核辅助语言</span>
+          <span>已发布辅助语言</span>
           <strong>{reviewedLocales}</strong>
         </article>
         <article className={styles.metric}>
-          <span>辅助语言草稿</span>
+          <span>待处理辅助语言</span>
           <strong>{draftLocales}</strong>
         </article>
         <article className={styles.metric}>
@@ -351,7 +340,15 @@ export function ProfilePage() {
 
       {currentTranslation ? (
         <ProfileTranslationEditor
+          generating={saving}
           locale={translationLocale!}
+          onGenerate={() => translationLocale && void generateTranslation(translationLocale)}
+          onReview={() => translationLocale && void markReviewed(translationLocale)}
+          onSave={() => translationLocale && void saveTranslation(translationLocale)}
+          onUnpublish={() =>
+            translationLocale &&
+            void saveTranslation(translationLocale, "已取消发布辅助语言，可以继续修改译文。")
+          }
           translation={currentTranslation}
           update={(key, value) => translationLocale && updateTranslationField(translationLocale, key, value)}
           updateSocialLink={(linkID, label) => translationLocale && updateTranslationSocialLink(translationLocale, linkID, label)}
@@ -412,6 +409,8 @@ export function ProfilePage() {
           <SocialLinksEditor
             links={profile.social_links}
             onChange={(links) => setProfile({ ...profile, social_links: links })}
+            onUploadImage={uploadSocialImage}
+            uploadingIndex={uploadingSocialIndex}
           />
         </>
       )}
@@ -420,28 +419,43 @@ export function ProfilePage() {
 }
 
 function ProfileTranslationEditor({
+  generating,
   locale,
+  onGenerate,
+  onReview,
+  onSave,
+  onUnpublish,
   translation,
   updateSocialLink,
   update,
 }: {
+  generating: boolean;
   locale: TranslationLocale;
+  onGenerate: () => void;
+  onReview: () => void;
+  onSave: () => void;
+  onUnpublish: () => void;
   translation: ProfileTranslation;
   updateSocialLink: (linkID: number, label: string) => void;
   update: <Key extends keyof ProfileTranslation>(key: Key, value: ProfileTranslation[Key]) => void;
 }) {
   return (
     <>
+      <TranslationWorkflow
+        busy={generating}
+        locale={locale}
+        onGenerate={onGenerate}
+        onReview={onReview}
+        onSave={onSave}
+        onUnpublish={onUnpublish}
+        translation={translation}
+      />
+
       <section className={styles.formSection}>
         <div className={styles.sectionHeader}>
           <div>
             <h2>{adminLocaleRoleLabel(locale)}</h2>
-            <p>这里的内容只影响当前辅助语言，不会改动中文主资料。</p>
-          </div>
-          <div className={styles.localeMeta}>
-            <span className={`${styles.statusBadge} ${translation.stale ? styles.statusStale : ""}`}>
-              {translationStatusLabel(translation.translation_status, translation.stale)}
-            </span>
+            <p>AI 草稿可以继续人工修改，保存后不会立即公开。</p>
           </div>
         </div>
         <div className={styles.grid}>
@@ -609,9 +623,13 @@ function Field({
 function SocialLinksEditor({
   links,
   onChange,
+  onUploadImage,
+  uploadingIndex,
 }: {
   links: SocialLink[];
   onChange: (links: SocialLink[]) => void;
+  onUploadImage: (index: number, file: File) => Promise<void>;
+  uploadingIndex: number | null;
 }) {
   return (
     <section className={styles.formSection}>
@@ -641,6 +659,12 @@ function SocialLinksEditor({
             onChange={(value) => onChange(replaceLink(links, index, { ...link, url: value }))}
             value={link.url}
           />
+          <SocialImageControl
+            index={index}
+            link={link}
+            onUploadImage={onUploadImage}
+            uploading={uploadingIndex === index}
+          />
           <button
             aria-label={`删除${link.label || "社交链接"}`}
             className={`${styles.iconButton} ${styles.danger}`}
@@ -654,6 +678,57 @@ function SocialLinksEditor({
       ))}
     </section>
   );
+}
+
+function SocialImageControl({
+  index,
+  link,
+  onUploadImage,
+  uploading,
+}: {
+  index: number;
+  link: SocialLink;
+  onUploadImage: (index: number, file: File) => Promise<void>;
+  uploading: boolean;
+}) {
+  const label = link.label.trim() || "社交链接";
+  const inputID = `social-link-${link.id ?? index}-image`;
+  const previewURL = mediaURLFromIcon(link.icon);
+
+  return (
+    <div className={styles.socialImageCell}>
+      <div className={styles.socialImagePreview}>
+        {previewURL ? (
+          <img alt={`${label} 社交图片`} src={previewURL} />
+        ) : (
+          <ImagePlus aria-hidden="true" size={18} />
+        )}
+      </div>
+      <label className={`${styles.button} ${styles.socialUploadButton}`} htmlFor={inputID}>
+        <ImagePlus aria-hidden="true" size={16} />
+        {uploading ? "上传中..." : "上传图片"}
+      </label>
+      <input
+        accept="image/png,image/jpeg,image/webp"
+        aria-label={`${label} 社交图片文件`}
+        className={styles.hiddenInput}
+        id={inputID}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            void onUploadImage(index, file);
+          }
+          event.currentTarget.value = "";
+        }}
+        type="file"
+      />
+    </div>
+  );
+}
+
+function mediaURLFromIcon(icon: string) {
+  const match = icon.match(/media:\/\/asset\/(\d+)\/([a-zA-Z0-9_-]+)/);
+  return match ? `/media/${match[1]}/${match[2]}` : "";
 }
 
 function replaceLink(links: SocialLink[], index: number, link: SocialLink) {

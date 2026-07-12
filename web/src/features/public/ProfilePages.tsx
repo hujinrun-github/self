@@ -8,13 +8,10 @@ import { usePublicPageMeta } from "./head";
 import { coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { PublicLayout } from "./PublicLayout";
+import { SocialLinkCard, type PublicSocialLink } from "./SocialLinkCard";
 import styles from "./Public.module.css";
 
-type SocialLink = {
-  id: number;
-  label: string;
-  url: string;
-};
+type SocialLink = PublicSocialLink;
 
 type ProfilePayload = {
   avatar_media_id?: number | null;
@@ -117,10 +114,7 @@ export function BioPage() {
             <div className={styles.socialGrid}>
               {profile?.social_links?.length ? (
                 profile.social_links.map((link) => (
-                  <a className={styles.socialCard} href={link.url} key={link.id} rel="noreferrer" target="_blank">
-                    <strong>{link.label}</strong>
-                    <span className={styles.muted}>{link.url}</span>
-                  </a>
+                  <SocialLinkCard key={link.id} link={link} />
                 ))
               ) : (
                 <div className={`${styles.socialCard} ${styles.socialCardStatic}`}>
@@ -203,10 +197,7 @@ export function ContactPage() {
             <div className={styles.socialGrid}>
               {profile?.social_links?.length ? (
                 profile.social_links.map((link) => (
-                  <a className={styles.socialCard} href={link.url} key={link.id} rel="noreferrer" target="_blank">
-                    <strong>{link.label}</strong>
-                    <span className={styles.muted}>{link.url}</span>
-                  </a>
+                  <SocialLinkCard key={link.id} link={link} />
                 ))
               ) : (
                 <div className={`${styles.socialCard} ${styles.socialCardStatic}`}>

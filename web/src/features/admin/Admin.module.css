@@ -460,6 +460,47 @@
   color: #9a5a00;
 }
 
+.translationWorkflow {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid rgb(194 213 239 / 0.72);
+  border-bottom: 1px solid rgb(194 213 239 / 0.72);
+}
+
+.translationWorkflowHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.translationWorkflowCopy {
+  display: grid;
+  max-width: 760px;
+  gap: 5px;
+}
+
+.translationWorkflowCopy strong,
+.translationWorkflowCopy h2 {
+  margin: 0;
+  color: #10233f;
+  font-size: 1.05rem;
+}
+
+.translationWorkflowCopy span {
+  color: #627690;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.translationWorkflowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -468,9 +509,40 @@
 
 .socialRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(170px, 0.7fr) auto;
   gap: 14px;
   align-items: end;
+}
+
+.socialImageCell {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.socialImagePreview {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(194 213 239 / 0.85);
+  border-radius: 16px;
+  background: #f6f9ff;
+  color: #4d76c8;
+}
+
+.socialImagePreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.socialUploadButton {
+  min-height: 42px;
+  justify-content: center;
+  padding: 0 12px;
 }
 
 .field {
@@ -973,12 +1045,14 @@
 }
 
 .fullscreenEditor {
+  height: 100%;
   min-height: 0;
   border: 0;
   border-radius: 0;
 }
 
 .fullscreenEditor :global(.w-md-editor) {
+  height: 100% !important;
   border-radius: 0;
 }
 
@@ -1462,8 +1536,14 @@
   }
 
   .headerActions,
-  .rowActions {
+  .rowActions,
+  .translationWorkflowActions {
     justify-content: flex-start;
+  }
+
+  .translationWorkflowHeader {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .grid,

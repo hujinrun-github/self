@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
@@ -199,6 +199,71 @@ describe("ProfilePage", () => {
     });
   });
 
+  it("uploads a social link image and saves it as the link icon", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            bio: "",
+            email: "",
+            headline: "",
+            id: 1,
+            name: "Ada",
+            social_links: [{ icon: "link", id: 7, label: "X", sort_order: 10, url: "https://x.com/ada" }],
+            summary: "",
+            updated_at: "2026-06-15T00:00:00Z",
+          }),
+          { headers: { "Content-Type": "application/json", ETag: '"abc"' }, status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 31,
+            file_name: "x.png",
+            variants: {
+              avatar: { height: 400, mime_type: "image/png", path: "/uploads/aa/bb/avatar.png", width: 400 },
+            },
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            bio: "",
+            email: "",
+            headline: "",
+            id: 1,
+            name: "Ada",
+            social_links: [{ icon: "media://asset/31/avatar", id: 7, label: "X", sort_order: 10, url: "https://x.com/ada" }],
+            summary: "",
+            updated_at: "2026-06-15T00:00:01Z",
+          }),
+          { headers: { "Content-Type": "application/json", ETag: '"def"' }, status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithApp(<ProfilePage />);
+
+    const socialImageInput = await screen.findByLabelText("X 社交图片文件");
+    await userEvent.upload(socialImageInput, new File(["avatar"], "x.png", { type: "image/png" }));
+
+    expect(await screen.findByAltText("X 社交图片")).toHaveAttribute("src", "/media/31/avatar");
+    await userEvent.click(screen.getByRole("button", { name: /保存资料/i }));
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init?.method ?? "GET").toUpperCase() === "PUT");
+    const putInit = putCall?.[1] as RequestInit;
+    expect(JSON.parse(String(putInit.body)).social_links[0]).toMatchObject({
+      icon: "media://asset/31/avatar",
+      label: "X",
+      url: "https://x.com/ada",
+    });
+  });
+
   it("redirects unauthenticated admin routes to login", async () => {
     vi.stubGlobal(
       "fetch",
@@ -282,6 +347,98 @@ describe("ProfilePage", () => {
     expect(putCall).toBeTruthy();
     const putInit = putCall?.[1] as RequestInit;
     expect(new Headers(putInit.headers).get("X-CSRF-Token")).toBe("csrf-token");
+  });
+
+  it("generates an auxiliary-language draft inline and publishes it after human review", async () => {
+    const profileResponse = (english: Record<string, unknown>) =>
+      new Response(
+        JSON.stringify({
+          bio: "Chinese bio",
+          email: "ada@example.com",
+          headline: "Chinese headline",
+          id: 1,
+          name: "Chinese name",
+          social_links: [],
+          summary: "Chinese summary",
+          translations: {
+            en: english,
+            ja: {
+              bio: "",
+              etag: null,
+              exists: false,
+              headline: "",
+              name: "",
+              stale: false,
+              summary: "",
+              translation_status: "empty",
+            },
+          },
+          updated_at: "2026-06-15T00:00:00Z",
+        }),
+        { headers: { "Content-Type": "application/json", ETag: '"profile-etag"' }, status: 200 },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        profileResponse({
+          bio: "",
+          etag: null,
+          exists: false,
+          headline: "",
+          name: "",
+          stale: false,
+          summary: "",
+          translation_status: "empty",
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        profileResponse({
+          bio: "English bio",
+          etag: '"en-draft-etag"',
+          exists: true,
+          headline: "English headline",
+          name: "English name",
+          stale: false,
+          summary: "English summary",
+          translation_status: "ai_draft",
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        profileResponse({
+          bio: "English bio",
+          etag: '"en-reviewed-etag"',
+          exists: true,
+          headline: "English headline",
+          name: "English name",
+          stale: false,
+          summary: "English summary",
+          translation_status: "reviewed",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWithApp(<ProfilePage />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
+    expect(screen.getByText("未创建")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "AI 翻译为英文" }));
+
+    expect(await screen.findByDisplayValue("English name")).toBeInTheDocument();
+    expect(screen.getByText("AI 草稿")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "人工审核并发布" }));
+
+    expect(await screen.findByText("已审核并发布")).toBeInTheDocument();
+    expect(fetchMock.mock.calls).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(["/api/admin/profile/translations/en/generate", expect.objectContaining({ method: "POST" })]),
+        expect.arrayContaining([
+          "/api/admin/profile/translations/en/review",
+          expect.objectContaining({ method: "POST" }),
+        ]),
+      ]),
+    );
   });
 
   it("creates the first profile translation with If-None-Match star", async () => {
@@ -369,7 +526,7 @@ describe("ProfilePage", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
     await userEvent.type(screen.getByLabelText("姓名"), "English name");
     await userEvent.type(screen.getByLabelText("一句话介绍"), "English headline");
-    await userEvent.click(screen.getByRole("button", { name: /保存辅助语言/i }));
+    await userEvent.click(screen.getByRole("button", { name: "保存人工修改" }));
 
     const putCall = fetchMock.mock.calls.find(
       ([url, init]) => url === "/api/admin/profile/translations/en" && (init as RequestInit | undefined)?.method === "PUT",
@@ -483,7 +640,7 @@ describe("ProfilePage", () => {
 
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
     await userEvent.type(screen.getByLabelText("GitHub 名称"), "Code");
-    await userEvent.click(screen.getByRole("button", { name: /保存辅助语言/i }));
+    await userEvent.click(screen.getByRole("button", { name: "保存人工修改" }));
 
     const putCall = fetchMock.mock.calls.find(
       ([url, init]) => url === "/api/admin/profile/translations/en" && (init as RequestInit | undefined)?.method === "PUT",
@@ -812,6 +969,80 @@ describe("MediaPage", () => {
 });
 
 describe("ContentEditPage", () => {
+  it.each([
+    ["experience", "经历"],
+    ["talks", "演讲"],
+    ["writing", "写作"],
+    ["projects", "项目"],
+  ])("shows multilingual options while creating %s content", async (resource, resourceLabel) => {
+    const router = createMemoryRouter(
+      [{ path: `/admin/${resource}/new`, element: <ContentEditPage resource={resource} /> }],
+      { initialEntries: [`/admin/${resource}/new`] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    expect(screen.getByRole("tab", { name: "中文（主）" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "英文（辅）" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "日文（辅）" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "英文（辅）" }));
+    expect(screen.getByRole("heading", { name: "先保存中文主内容" })).toBeInTheDocument();
+    expect(screen.getByText(`保存后会自动进入${resourceLabel}的英文翻译页。`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存中文草稿并继续英文翻译" })).toBeInTheDocument();
+  });
+
+  it("creates the Chinese source and continues directly to the selected translation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 27, slug: "new-project", status: "draft" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 201,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            content_md: "",
+            featured: false,
+            id: 27,
+            slug: "new-project",
+            status: "draft",
+            summary: "",
+            techs: [],
+            title: "New Project",
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [
+        { path: "/admin/projects/new", element: <ContentEditPage resource="projects" /> },
+        { path: "/admin/projects/:id", element: <ContentEditPage resource="projects" /> },
+      ],
+      { initialEntries: ["/admin/projects/new"] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    await userEvent.type(screen.getByLabelText("标题"), "New Project");
+    await userEvent.click(screen.getByRole("tab", { name: "英文（辅）" }));
+    await userEvent.click(screen.getByRole("button", { name: "保存中文草稿并继续英文翻译" }));
+
+    await screen.findByRole("region", { name: "英文翻译与发布" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      slug: "new-project",
+      title: "New Project",
+    });
+    expect(router.state.location.pathname).toBe("/admin/projects/27");
+    expect(router.state.location.search).toBe("?locale=en");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/projects");
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.method).toBe("POST");
+  });
+
   it("loads an existing project into edit mode and saves with PUT", async () => {
     const fetchMock = vi
       .fn()
@@ -906,9 +1137,10 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
+    const workflow = await screen.findByRole("region", { name: "英文翻译与发布" });
     await userEvent.clear(screen.getByLabelText("标题"));
     await userEvent.type(screen.getByLabelText("标题"), "English Title");
-    await userEvent.click(screen.getByRole("button", { name: /保存辅助语言/i }));
+    await userEvent.click(within(workflow).getByRole("button", { name: "保存人工修改" }));
 
     const init = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/admin/projects/7/translations/en");
@@ -965,7 +1197,8 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
-    expect(await screen.findByRole("button", { name: /取消发布辅助语言后编辑 slug/i })).toBeInTheDocument();
+    const workflow = await screen.findByRole("region", { name: "英文翻译与发布" });
+    expect(within(workflow).getByRole("button", { name: "取消发布并转为草稿" })).toBeInTheDocument();
   });
 
   it("creates the first writing translation with If-None-Match star", async () => {
@@ -1022,9 +1255,10 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
+    const workflow = await screen.findByRole("region", { name: "英文翻译与发布" });
     await userEvent.clear(screen.getByLabelText("标题"));
     await userEvent.type(screen.getByLabelText("标题"), "English Writing");
-    await userEvent.click(screen.getByRole("button", { name: /保存辅助语言/i }));
+    await userEvent.click(within(workflow).getByRole("button", { name: "保存人工修改" }));
 
     const init = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/admin/writing/9/translations/en");
@@ -1242,7 +1476,10 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     await userEvent.click(await screen.findByRole("tab", { name: "英文（辅）" }));
-    await userEvent.click(screen.getByRole("button", { name: /生成辅助语言/i }));
+    const workflow = await screen.findByRole("region", { name: "英文翻译与发布" });
+    expect(within(workflow).getByRole("button", { name: "保存人工修改" })).toBeInTheDocument();
+    expect(within(workflow).getByRole("button", { name: "人工审核并发布" })).toBeDisabled();
+    await userEvent.click(within(workflow).getByRole("button", { name: "AI 翻译为英文" }));
 
     const generateCall = fetchMock.mock.calls.find(
       ([url, init]) => url === "/api/admin/talks/11/translations/en/generate" && (init as RequestInit | undefined)?.method === "POST",
@@ -1298,9 +1535,10 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     await userEvent.click(await screen.findByRole("tab", { name: "日文（辅）" }));
+    const workflow = await screen.findByRole("region", { name: "日文翻译与发布" });
     await userEvent.clear(screen.getByLabelText("机构"));
     await userEvent.type(screen.getByLabelText("机构"), "Tokyo Org");
-    await userEvent.click(screen.getByRole("button", { name: /保存辅助语言/i }));
+    await userEvent.click(within(workflow).getByRole("button", { name: "保存人工修改" }));
 
     const saveCall = fetchMock.mock.calls.find(
       ([url, init]) => url === "/api/admin/experience/5/translations/ja" && (init as RequestInit | undefined)?.method === "PUT",
@@ -1346,6 +1584,7 @@ describe("ContentListPage", () => {
 
     expect(await screen.findByTestId("admin-overview-grid")).toBeInTheDocument();
     expect(screen.getByTestId("admin-content-list")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "编辑" })).toHaveAttribute("href", "/admin/projects/7");
     expect(screen.getAllByText("案例、演示、仓库与重点项目内容。")).toHaveLength(2);
   });
 });
