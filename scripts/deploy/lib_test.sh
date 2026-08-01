@@ -99,11 +99,21 @@ test_render_env_file_maps_portfolio_prefix() {
   PORTFOLIO_DATABASE_URL="postgres://example" \
   PORTFOLIO_MINIO_BUCKET="portfolio-media" \
   PORTFOLIO_MEDIA_BLOB_BACKEND="hybrid" \
+  PORTFOLIO_TRANSLATION_PROVIDER="deepseek" \
+  PORTFOLIO_TRANSLATION_API_KEY="deepseek-key" \
+  PORTFOLIO_TRANSLATION_BASE_URL="https://api.deepseek.com" \
+  PORTFOLIO_TRANSLATION_MODEL="deepseek-v4-pro" \
+  PORTFOLIO_TRANSLATION_TIMEOUT_SECONDS="300" \
   PORTFOLIO_PORT_HOST="4300" \
     render_env_file "$target"
   grep -F "DATABASE_URL=postgres://example" "$target" >/dev/null || fail "expected database url mapping"
   grep -F "MINIO_BUCKET=portfolio-media" "$target" >/dev/null || fail "expected bucket mapping"
   grep -F "MEDIA_BLOB_BACKEND=hybrid" "$target" >/dev/null || fail "expected blob backend mapping"
+  grep -F "TRANSLATION_PROVIDER=deepseek" "$target" >/dev/null || fail "expected translation provider mapping"
+  grep -F "TRANSLATION_API_KEY=deepseek-key" "$target" >/dev/null || fail "expected translation api key mapping"
+  grep -F "TRANSLATION_BASE_URL=https://api.deepseek.com" "$target" >/dev/null || fail "expected translation base url mapping"
+  grep -F "TRANSLATION_MODEL=deepseek-v4-pro" "$target" >/dev/null || fail "expected translation model mapping"
+  grep -F "TRANSLATION_TIMEOUT_SECONDS=300" "$target" >/dev/null || fail "expected translation timeout mapping"
   grep -F "PORT_HOST=4300" "$target" >/dev/null || fail "expected host port mapping"
   grep -F "UPLOADS_DIR=/app/data/uploads" "$target" >/dev/null || fail "expected uploads dir default"
   grep -F "PRIVATE_UPLOADS_DIR=/app/data/private_uploads" "$target" >/dev/null || fail "expected private uploads dir default"
