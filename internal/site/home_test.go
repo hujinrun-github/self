@@ -58,6 +58,34 @@ func TestHomeReturnsEmptyArrays(t *testing.T) {
 	}
 }
 
+func TestHomeIncludesExperienceTechs(t *testing.T) {
+	database, _ := dbtest.OpenPostgres(t)
+	defer database.Close()
+
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	repo := NewHomeRepository(database, func() time.Time { return now })
+
+	var experienceID int64
+	if err := repo.db.QueryRow(`INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES ('2024', 'Staff Engineer', 'Acme', 'Built platform systems.', 'published', 10, $1, $2, $3) RETURNING id`, now, now, now).Scan(&experienceID); err != nil {
+		t.Fatalf("seed experience: %v", err)
+	}
+	var techID int64
+	if err := repo.db.QueryRow(`INSERT INTO techs (name, slug, created_at, updated_at) VALUES ('Go', 'go', $1, $2) RETURNING id`, now, now).Scan(&techID); err != nil {
+		t.Fatalf("seed tech: %v", err)
+	}
+	if _, err := repo.db.Exec(`INSERT INTO experience_tech (experience_id, tech_id, sort_order) VALUES ($1, $2, 10)`, experienceID, techID); err != nil {
+		t.Fatalf("seed experience tech: %v", err)
+	}
+
+	home, err := repo.GetHome(t.Context())
+	if err != nil {
+		t.Fatalf("GetHome: %v", err)
+	}
+	if len(home.Experiences) != 1 || len(home.Experiences[0].Techs) != 1 || home.Experiences[0].Techs[0].Name != "Go" {
+		t.Fatalf("experience techs = %+v", home.Experiences)
+	}
+}
+
 func seedHomeRows(t *testing.T, repo *HomeRepository, now time.Time) {
 	t.Helper()
 	for i := 1; i <= 6; i++ {

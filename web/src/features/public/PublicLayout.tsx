@@ -1,4 +1,4 @@
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -22,12 +22,13 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
   }));
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} id="top">
       <div className={styles.surface}>
         <header className={styles.header}>
           <div className={styles.bar}>
             <Link className={styles.brand} to={withLocale(locale, "/")}>
-              {copy.portfolio}
+              <span aria-hidden="true" className={styles.brandMark}>研</span>
+              <span>{copy.portfolio}</span>
             </Link>
             <button
               aria-label={copy.menuToggle}
@@ -35,29 +36,32 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
               onClick={() => setOpen(!open)}
               type="button"
             >
-              <Menu aria-hidden="true" size={18} />
+              {open ? <X aria-hidden="true" size={18} /> : <Menu aria-hidden="true" size={18} />}
             </button>
             <nav aria-label="Primary" className={styles.nav} data-open={open}>
-              <Link className={isActivePath(location.pathname, withLocale(locale, "/")) ? styles.navLinkActive : ""} to={withLocale(locale, "/")}>
+              <Link className={isActivePath(location.pathname, withLocale(locale, "/")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/")}>
                 {copy.home}
               </Link>
-              <Link className={isActivePath(location.pathname, withLocale(locale, "/bio")) ? styles.navLinkActive : ""} to={withLocale(locale, "/bio")}>
+              <Link className={isActivePath(location.pathname, withLocale(locale, "/bio")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/bio")}>
                 {copy.bio}
               </Link>
               <Link
                 className={isActivePath(location.pathname, withLocale(locale, "/writing")) ? styles.navLinkActive : ""}
+                onClick={() => setOpen(false)}
                 to={withLocale(locale, "/writing")}
               >
                 {copy.writing}
               </Link>
               <Link
                 className={isActivePath(location.pathname, withLocale(locale, "/projects")) ? styles.navLinkActive : ""}
+                onClick={() => setOpen(false)}
                 to={withLocale(locale, "/projects")}
               >
                 {copy.projects}
               </Link>
               <Link
                 className={isActivePath(location.pathname, withLocale(locale, "/contact")) ? styles.navLinkActive : ""}
+                onClick={() => setOpen(false)}
                 to={withLocale(locale, "/contact")}
               >
                 {copy.contact}
@@ -70,6 +74,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
                   <Link
                     className={`${styles.localeLink} ${active ? styles.localeLinkActive : ""}`}
                     key={link.locale}
+                    onClick={() => setOpen(false)}
                     to={link.path}
                   >
                     {link.locale.toUpperCase()}
@@ -80,9 +85,54 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
           </div>
         </header>
         <main className={styles.main}>{children}</main>
+        <footer className={styles.footer}>
+          <div className={styles.footerRow}>
+            <div>
+              <strong>{copy.portfolio}</strong>
+              <span>{footerCopy(locale)}</span>
+            </div>
+            <nav aria-label="Footer" className={styles.footerLinks}>
+              <Link aria-label={footerLinkLabel(copy.home, locale)} to={withLocale(locale, "/")}>{copy.home}</Link>
+              <Link aria-label={footerLinkLabel(copy.projects, locale)} to={withLocale(locale, "/projects")}>{copy.projects}</Link>
+              <Link aria-label={footerLinkLabel(copy.writing, locale)} to={withLocale(locale, "/writing")}>{copy.writing}</Link>
+              <Link aria-label={footerLinkLabel(copy.contact, locale)} to={withLocale(locale, "/contact")}>{copy.contact}</Link>
+            </nav>
+            <a className={styles.backToTop} href="#top">{backToTopCopy(locale)}</a>
+          </div>
+        </footer>
       </div>
     </div>
   );
+}
+
+function footerCopy(locale: string) {
+  if (locale === "en") {
+    return "Personal portfolio · Continuously updated";
+  }
+  if (locale === "ja") {
+    return "個人ポートフォリオ · 継続的に更新";
+  }
+  return "个人作品集 · 持续更新";
+}
+
+function backToTopCopy(locale: string) {
+  if (locale === "en") {
+    return "Back to top";
+  }
+  if (locale === "ja") {
+    return "トップへ戻る";
+  }
+  return "返回顶部";
+}
+
+function footerLinkLabel(label: string, locale: string) {
+  if (locale === "en") {
+    return `${label} footer link`;
+  }
+  if (locale === "ja") {
+    return `${label} フッターリンク`;
+  }
+  return `${label}页脚链接`;
 }
 
 function stripLocalePrefix(pathname: string) {

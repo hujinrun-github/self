@@ -1,20 +1,13 @@
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  FolderCode,
-  NotebookPen,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
 import { usePublicPageMeta } from "./head";
-import { PublicLayout } from "./PublicLayout";
-import { ProfileAvatar } from "./ProfileAvatar";
-import { SocialLinkCard, type PublicSocialLink } from "./SocialLinkCard";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
+import { ProfileAvatar } from "./ProfileAvatar";
+import { PublicLayout } from "./PublicLayout";
+import { SocialLinkCard, type PublicSocialLink } from "./SocialLinkCard";
 import styles from "./Public.module.css";
 
 type Summary = {
@@ -24,15 +17,19 @@ type Summary = {
   summary?: string;
 };
 
+type Term = {
+  name: string;
+  slug?: string;
+};
+
 type Experience = {
   id: number;
   period: string;
   title: string;
   organization: string;
   description: string;
+  techs?: Term[];
 };
-
-type SocialLink = PublicSocialLink;
 
 type HomePayload = {
   requested_locale?: string;
@@ -53,7 +50,7 @@ type ProfilePreviewPayload = {
   summary: string;
   bio: string;
   email: string;
-  social_links: SocialLink[];
+  social_links: PublicSocialLink[];
 };
 
 const emptyHomePayload: HomePayload = {
@@ -79,10 +76,10 @@ export function HomePage() {
   const location = useLocation();
   const locale = coerceLocale(localeParam);
   const copy = publicLocaleCopy(locale);
+  const design = designCopy(locale);
   const displayName = textOrFallback(profile.name, copy.portfolio);
   const displayHeadline = textOrFallback(profile.headline, copy.placeholderHeadline);
   const displaySummary = textOrFallback(profile.summary, copy.placeholderSummary);
-  const bioParagraphs = paragraphize(textOrFallback(profile.bio, copy.placeholderBio));
 
   useEffect(() => {
     let active = true;
@@ -109,19 +106,18 @@ export function HomePage() {
       hreflang: targetLocale,
     })),
     canonicalPath: location.pathname,
-    description: copy.homeDescription,
+    description: displaySummary,
     robots: home.fallback_from || profile.fallback_from ? "noindex, follow" : "",
-    title: copy.portfolio,
+    title: `${displayName} | ${copy.portfolio}`,
   });
+
+  const experiences = experienceEntries(home.experiences, locale);
 
   return (
     <PublicLayout>
-      <section className={styles.hero} data-testid="public-hero">
+      <section className={`${styles.hero} ${styles.homeHero}`} data-testid="public-hero">
         <div className={`${styles.heroCopy} ${styles.homeHeroCopy}`}>
-          <div className={styles.sectionLabel}>
-            <Sparkles aria-hidden="true" size={16} />
-            <span>{copy.now}</span>
-          </div>
+          <p className={styles.sectionLabel}>{design.discipline}</p>
           <h1>{displayName}</h1>
           <p className={styles.heroHeadline}>{displayHeadline}</p>
           <div className={styles.heroIntro}>
@@ -130,284 +126,302 @@ export function HomePage() {
             </p>
             <Link className={styles.heroIntroLink} to={withLocale(locale, "/bio")}>
               {copy.aboutMore}
-              <ArrowRight aria-hidden="true" size={14} />
+              <ArrowUpRight aria-hidden="true" size={15} />
             </Link>
           </div>
-          <p className={styles.heroMeta}>{copy.homeDescription}</p>
           <div className={styles.actions}>
-            <Link className={styles.button} to={withLocale(locale, "/contact")}>
-              {copy.contact}
+            <Link className={styles.button} to={withLocale(locale, "/projects")}>
+              {design.viewProjects}
+              <ArrowUpRight aria-hidden="true" size={17} />
             </Link>
-            <Link className={styles.textButton} to={withLocale(locale, "/projects")}>
-              {copy.viewAllProjects}
-              <ArrowRight aria-hidden="true" size={16} />
+            <Link className={styles.secondaryButton} to={withLocale(locale, "/contact")}>
+              {design.startContact}
             </Link>
           </div>
           {profile.social_links.length ? (
-            <div aria-label="社交链接" className={styles.socialStrip}>
+            <div aria-label={design.socialLinks} className={styles.socialStrip}>
               {profile.social_links.map((link) => (
                 <SocialLinkCard key={link.id} link={link} />
               ))}
             </div>
           ) : null}
         </div>
-        <div className={styles.heroPanel}>
-          <div className={styles.heroGlow} />
-          <ProfileAvatar mediaID={profile.avatar_media_id} name={displayName} />
-          <div className={styles.heroNote}>
-            <strong>{copy.now}</strong>
-            <p className={styles.muted}>{copy.nowDescription}</p>
+
+        <SystemAtlas
+          locale={locale}
+          mediaID={profile.avatar_media_id}
+          name={displayName}
+        />
+
+        <a aria-label={copy.experience} className={styles.heroScroll} href="#experience">
+          <span>01</span>
+          <ArrowDownRight aria-hidden="true" size={17} />
+        </a>
+      </section>
+
+      <section className={styles.section} id="experience">
+        <SectionHeader index={design.experienceIndex} intro={design.experienceIntro} title={design.experienceTitle} />
+        <ol className={styles.timeline}>
+          {experiences.map((item, index) => (
+            <li className={styles.timelineItem} key={`${item.period}-${item.title}-${index}`}>
+              <span className={styles.editorialIndex}>{String(index + 1).padStart(2, "0")}</span>
+              <time className={styles.timelineMeta}>{item.period}</time>
+              <div className={styles.timelineBody}>
+                <h3>{item.title}</h3>
+                <p className={styles.muted}>{item.organization}</p>
+                {item.techs?.length ? (
+                  <div aria-label="技术栈" className={`${styles.chipRow} ${styles.timelineTags}`}>
+                    {item.techs.map((tech) => (
+                      <span className={styles.chip} key={tech.slug ?? tech.name}>
+                        {tech.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <p className={styles.bodyText}>{item.description}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className={`${styles.section} ${styles.sectionMuted}`} data-testid="public-section-writing">
+        <SectionHeader index={design.writingIndex} intro={design.writingIntro} title={design.writingTitle} />
+        {home.writing.length ? (
+          <div className={styles.editorialList}>
+            {home.writing.slice(0, 3).map((item, index) => (
+              <Link
+                className={styles.editorialItem}
+                key={item.id}
+                to={`${withLocale(locale, "/writing")}/${item.slug ?? item.id}`}
+              >
+                <span className={styles.editorialIndex}>{String(index + 1).padStart(2, "0")}</span>
+                <div className={styles.editorialCopy}>
+                  <p className={styles.previewKicker}>{copy.writing}</p>
+                  <h3>{item.title}</h3>
+                  {item.summary ? <p className={styles.muted}>{item.summary}</p> : null}
+                </div>
+                <ArrowUpRight aria-hidden="true" size={19} />
+              </Link>
+            ))}
           </div>
+        ) : (
+          <EmptyCollection description={copy.emptyCollectionDescription} title={copy.emptyCollectionTitle} />
+        )}
+        <div className={styles.sectionAction}>
+          <Link className={styles.textButton} to={withLocale(locale, "/writing")}>
+            {copy.viewAllWriting}
+            <ArrowUpRight aria-hidden="true" size={16} />
+          </Link>
         </div>
       </section>
 
-      <section className={styles.section}>
-        <div className={styles.twoPanelGrid}>
-          <article className={styles.panel}>
-            <SectionHeading icon={<BriefcaseBusiness aria-hidden="true" size={18} />} title={copy.experience} />
-            <div className={styles.timeline}>
-              {experienceEntries(home.experiences, locale).map((item, index, items) => (
-                <article className={styles.timelineItem} key={`${item.period}-${item.title}-${index}`}>
-                  <div className={styles.timelineRail}>
-                    <span className={styles.timelineDot} />
-                    {index < items.length - 1 ? <span className={styles.timelineLine} /> : null}
-                  </div>
-                  <div className={styles.timelineMeta}>{item.period}</div>
-                  <div className={styles.timelineBody}>
-                    <h3>{item.title}</h3>
-                    <p className={styles.muted}>{item.organization}</p>
-                    <p className={styles.bodyText}>{item.description}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </article>
-
-          <article className={styles.panel}>
-            <SectionHeading icon={<UserRound aria-hidden="true" size={18} />} title={copy.bio} />
-            <div className={styles.stack}>
-              <p className={styles.panelLead}>{copy.bioDescription}</p>
-              {bioParagraphs.slice(0, 2).map((paragraph) => (
-                <p className={styles.bodyText} key={paragraph}>
-                  {paragraph}
-                </p>
-              ))}
-            </div>
-            <Link className={styles.textButton} to={withLocale(locale, "/bio")}>
-              {copy.aboutMore}
-              <ArrowRight aria-hidden="true" size={16} />
-            </Link>
-          </article>
+      <section className={styles.section} data-testid="public-section-projects">
+        <SectionHeader index={design.projectsIndex} intro={design.projectsIntro} title={design.projectsTitle} />
+        {home.projects.length ? (
+          <div className={styles.projectGrid}>
+            {home.projects.slice(0, 3).map((item, index) => (
+              <Link
+                className={`${styles.projectCard} ${index === 0 ? styles.projectCardFeatured : ""}`}
+                key={item.id}
+                to={`${withLocale(locale, "/projects")}/${item.slug ?? item.id}`}
+              >
+                <div aria-hidden="true" className={styles.projectVisual}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <div className={styles.projectCardCopy}>
+                  <p className={styles.previewKicker}>{index === 0 ? design.featured : copy.projects}</p>
+                  <h3>{item.title}</h3>
+                  {item.summary ? <p className={styles.muted}>{item.summary}</p> : null}
+                  <span className={styles.textButton}>{design.readMore}<ArrowUpRight aria-hidden="true" size={16} /></span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <EmptyCollection description={copy.emptyCollectionDescription} title={copy.emptyCollectionTitle} />
+        )}
+        <div className={styles.sectionAction}>
+          <Link className={styles.textButton} to={withLocale(locale, "/projects")}>
+            {copy.viewAllProjects}
+            <ArrowUpRight aria-hidden="true" size={16} />
+          </Link>
         </div>
       </section>
 
-      <section className={styles.section}>
-        <div className={styles.twoPanelGrid}>
-          <article className={styles.panel} data-testid="public-section-writing">
-            <SectionTitleRow
-              icon={<NotebookPen aria-hidden="true" size={18} />}
-              title={copy.writing}
-              to={withLocale(locale, "/writing")}
-              toLabel={copy.viewAllWriting}
-            />
-            <div className={styles.listStack}>
-              {home.writing.length > 0
-                ? home.writing.map((item) => (
-                    <Link className={styles.listItem} key={item.id} to={`${withLocale(locale, "/writing")}/${item.slug ?? item.id}`}>
-                      <div className={styles.listTitleBlock}>
-                        <strong>{item.title}</strong>
-                        {item.summary ? <span className={styles.muted}>{item.summary}</span> : null}
-                      </div>
-                      <ArrowRight aria-hidden="true" size={16} />
-                    </Link>
-                  ))
-                : Array.from({ length: 4 }, (_, index) => (
-                    <div className={`${styles.listItem} ${styles.listItemStatic}`} key={`writing-empty-${index}`}>
-                      <div className={styles.listTitleBlock}>
-                        <strong>{copy.emptyCollectionTitle}</strong>
-                        <span className={styles.muted}>{copy.emptyCollectionDescription}</span>
-                      </div>
-                    </div>
-                  ))}
-            </div>
-          </article>
-
-          <article className={styles.panel} data-testid="public-section-projects">
-            <SectionTitleRow
-              icon={<FolderCode aria-hidden="true" size={18} />}
-              title={copy.projects}
-              to={withLocale(locale, "/projects")}
-              toLabel={copy.viewAllProjects}
-            />
-            <div className={styles.compactShowcaseGrid}>
-              {home.projects.length > 0
-                ? home.projects.map((item) => (
-                    <SummaryCard compact key={item.id} item={item} to={withLocale(locale, "/projects")} />
-                  ))
-                : Array.from({ length: 2 }, (_, index) => (
-                    <EmptyShowcaseCard
-                      compact
-                      description={copy.emptyCollectionDescription}
-                      key={`project-empty-${index}`}
-                      title={copy.emptyCollectionTitle}
-                    />
-                  ))}
-            </div>
-          </article>
+      <section className={styles.contactBand}>
+        <p className={styles.sectionIndex}>04 / CONTACT</p>
+        <h2>{design.contactTitle}</h2>
+        <div>
+          <p>{design.contactIntro}</p>
+          <Link className={styles.lightButton} to={withLocale(locale, "/contact")}>
+            {design.startContact}
+            <ArrowUpRight aria-hidden="true" size={17} />
+          </Link>
         </div>
       </section>
     </PublicLayout>
   );
 }
 
-function SummaryCard({ compact = false, item, to }: { compact?: boolean; item: Summary; to: string }) {
+function SystemAtlas({ locale, mediaID, name }: { locale: Locale; mediaID?: number | null; name: string }) {
+  const copy = publicLocaleCopy(locale);
+  const design = designCopy(locale);
   return (
-    <Link className={`${styles.showcaseCard} ${compact ? styles.showcaseCardCompact : ""}`} to={`${to}/${item.slug ?? item.id}`}>
-      <div className={styles.media} />
-      <div className={styles.stack}>
-        <h3>{item.title}</h3>
-        {item.summary ? <p className={styles.muted}>{item.summary}</p> : null}
+    <aside aria-labelledby="focus-heading" className={styles.heroPanel}>
+      <div className={styles.atlasMap}>
+        <div className={styles.atlasPortrait}>
+          <ProfileAvatar mediaID={mediaID} name={name} />
+          <span>PROFILE / HJR</span>
+        </div>
+        <div aria-hidden="true" className={styles.atlasSchematic}>
+          <span className={styles.atlasNode}>01</span>
+          <span className={styles.atlasNode}>02</span>
+          <span className={styles.atlasNode}>03</span>
+          <i />
+          <i />
+        </div>
       </div>
-    </Link>
-  );
-}
-
-function EmptyShowcaseCard({
-  compact = false,
-  description,
-  title,
-}: {
-  compact?: boolean;
-  description: string;
-  title: string;
-}) {
-  return (
-    <div className={`${styles.showcaseCard} ${styles.showcaseCardStatic} ${compact ? styles.showcaseCardCompact : ""}`}>
-      <div className={styles.media} />
-      <div className={styles.stack}>
-        <h3>{title}</h3>
-        <p className={styles.muted}>{description}</p>
+      <div className={styles.atlasContent}>
+        <header className={styles.atlasHeader}>
+          <h2 id="focus-heading">{design.focusTitle}</h2>
+          <span className={styles.liveStatus}><i aria-hidden="true" />{design.iterating}</span>
+        </header>
+        <ol className={styles.focusList}>
+          {design.focusItems.map((item, index) => (
+            <li key={item[0]}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <strong>{item[0]}</strong>
+              <small>{item[1]}</small>
+            </li>
+          ))}
+        </ol>
+        <p className={styles.srOnly}>{copy.nowDescription}</p>
       </div>
-    </div>
+    </aside>
   );
 }
 
-function SectionHeading({ icon, title }: { icon: React.ReactNode; title: string }) {
+function SectionHeader({ index, intro, title }: { index: string; intro: string; title: string }) {
   return (
-    <div className={styles.sectionHeading}>
-      {icon}
-      <h2>{title}</h2>
-    </div>
+    <header className={styles.sectionHeader}>
+      <div>
+        <p className={styles.sectionIndex}>{index}</p>
+        <h2>{title}</h2>
+      </div>
+      <p>{intro}</p>
+    </header>
   );
 }
 
-function SectionTitleRow({
-  icon,
-  title,
-  to,
-  toLabel,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  to: string;
-  toLabel: string;
-}) {
+function EmptyCollection({ description, title }: { description: string; title: string }) {
   return (
-    <div className={styles.sectionTitleRow}>
-      <SectionHeading icon={icon} title={title} />
-      <Link className={styles.textButton} to={to}>
-        {toLabel}
-        <ArrowRight aria-hidden="true" size={16} />
-      </Link>
+    <div className={styles.emptyState} role="status">
+      <span>00</span>
+      <div><h3>{title}</h3><p>{description}</p></div>
     </div>
   );
 }
 
-function experienceEntries(items: Experience[], locale: Locale) {
+function experienceEntries(items: Experience[], locale: Locale): Experience[] {
   if (items.length > 0) {
     return items;
   }
-  switch (locale) {
-    case "zh":
-      return [
-        {
-          id: -1,
-          period: "当前",
-          title: "AI 产品与工具",
-          organization: "作品集内容持续整理中",
-          description: "新的公开经历会在这里按时间顺序展示，帮助访问者快速理解你的能力脉络。",
-        },
-        {
-          id: -2,
-          period: "近期",
-          title: "设计系统与前端工程",
-          organization: "界面与内容将同步更新",
-          description: "这一栏适合放职责、成果和协作方式，让整个首页更像一张可信的职业摘要。",
-        },
-        {
-          id: -3,
-          period: "归档",
-          title: "长期项目与实验",
-          organization: "发布后自动进入时间线",
-          description: "保持时间线稳定、简洁、可扫描，比堆砌大段文本更适合首页的信息节奏。",
-        },
-      ];
-    case "ja":
-      return [
-        {
-          id: -1,
-          period: "現在",
-          title: "AI プロダクトとツール",
-          organization: "ポートフォリオの内容を整理中",
-          description: "公開された経歴はここに時系列で並び、どんな強みがあるかをすばやく伝えます。",
-        },
-        {
-          id: -2,
-          period: "最近",
-          title: "デザインシステムとフロントエンド",
-          organization: "見た目と内容をあわせて更新",
-          description: "役割、成果、進め方を短く置くことで、信頼感のあるプロフィール要約になります。",
-        },
-        {
-          id: -3,
-          period: "アーカイブ",
-          title: "長期プロジェクトと実験",
-          organization: "公開後に自動反映",
-          description: "長文よりも、流れが追いやすいタイムラインの方がトップページには向いています。",
-        },
-      ];
-    default:
-      return [
-        {
-          id: -1,
-          period: "Current",
-          title: "AI products and tools",
-          organization: "Portfolio content is being organized",
-          description: "Published experience will appear here in a clear sequence so visitors can scan strengths quickly.",
-        },
-        {
-          id: -2,
-          period: "Recent",
-          title: "Design systems and frontend engineering",
-          organization: "Visual polish and content will land together",
-          description: "This space works best for role, outcome, and collaboration notes rather than a dense wall of text.",
-        },
-        {
-          id: -3,
-          period: "Archive",
-          title: "Long-running projects and experiments",
-          organization: "Auto-filled after publishing",
-          description: "A stable, readable timeline gives the homepage a stronger professional rhythm even before everything is filled in.",
-        },
-      ];
+  if (locale === "en") {
+    return [
+      { id: -1, period: "Current", title: "AI products and tools", organization: "Ongoing practice", description: "Structuring real workflows so product decisions and system behavior remain clear." },
+      { id: -2, period: "Recent", title: "Design systems and frontend", organization: "Product delivery", description: "Connecting visual language, component behavior, and engineering constraints." },
+      { id: -3, period: "Archive", title: "Long-running projects", organization: "Continuously updated", description: "Published experience will appear here in a concise, scannable sequence." },
+    ];
   }
+  if (locale === "ja") {
+    return [
+      { id: -1, period: "現在", title: "AI プロダクトとツール", organization: "継続的な実践", description: "実際のワークフローを整理し、判断とシステムの挙動を明快にします。" },
+      { id: -2, period: "最近", title: "デザインシステムとフロントエンド", organization: "プロダクト開発", description: "視覚言語、コンポーネント、実装制約をひとつの仕組みにまとめます。" },
+      { id: -3, period: "アーカイブ", title: "長期プロジェクト", organization: "継続的に更新", description: "公開された経歴は、読みやすい時系列としてここに表示されます。" },
+    ];
+  }
+  return [
+    { id: -1, period: "当前", title: "AI 产品与工具", organization: "持续实践", description: "围绕真实工作流整理需求，让产品判断和系统行为保持清楚。" },
+    { id: -2, period: "近期", title: "设计系统与前端工程", organization: "产品交付", description: "把视觉语言、组件行为和工程约束连成可复用的系统。" },
+    { id: -3, period: "归档", title: "长期项目与实验", organization: "持续更新", description: "已发布的经历会在这里形成简洁、连续、可扫描的时间线。" },
+  ];
 }
 
-function paragraphize(value: string) {
-  return value
-    .split(/\n\s*\n/g)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+function designCopy(locale: Locale) {
+  if (locale === "en") {
+    return {
+      contactIntro: "Share the context and the outcome you need. We can start from the problem itself.",
+      contactTitle: "Want to talk about products, systems, or tools?",
+      discipline: "Engineering · Product design · Design systems",
+      experienceIndex: "01 / EXPERIENCE",
+      experienceIntro: "A concise timeline of focus, responsibilities, and accumulated practice.",
+      experienceTitle: "Work trajectory",
+      featured: "Featured work",
+      focusItems: [["AI products", "Real workflows"], ["Design systems", "Consistency at scale"], ["Developer tools", "Speed and reliability"]] as const,
+      focusTitle: "Current focus",
+      iterating: "In progress",
+      projectsIndex: "03 / PROJECTS",
+      projectsIntro: "Published projects flow directly from the existing content system.",
+      projectsTitle: "Selected work",
+      readMore: "Read more",
+      socialLinks: "Social links",
+      startContact: "Get in touch",
+      viewProjects: "View projects",
+      writingIndex: "02 / WRITING",
+      writingIntro: "Notes on products, systems, and reusable engineering decisions.",
+      writingTitle: "Thinking index",
+    };
+  }
+  if (locale === "ja") {
+    return {
+      contactIntro: "背景と目的を共有してください。問題そのものから一緒に考えます。",
+      contactTitle: "プロダクト、システム、ツールについて話しませんか？",
+      discipline: "開発 · プロダクトデザイン · デザインシステム",
+      experienceIndex: "01 / 経歴",
+      experienceIntro: "関心、役割、積み重ねを時系列で簡潔に整理します。",
+      experienceTitle: "仕事の軌跡",
+      featured: "注目プロジェクト",
+      focusItems: [["AI プロダクト", "実際のワークフロー"], ["デザインシステム", "一貫性と拡張性"], ["開発者ツール", "効率と信頼性"]] as const,
+      focusTitle: "現在の関心",
+      iterating: "継続中",
+      projectsIndex: "03 / プロジェクト",
+      projectsIntro: "公開されたプロジェクトは既存のコンテンツ管理から自動反映されます。",
+      projectsTitle: "選んだ仕事",
+      readMore: "続きを読む",
+      socialLinks: "ソーシャルリンク",
+      startContact: "連絡する",
+      viewProjects: "プロジェクトを見る",
+      writingIndex: "02 / 文章",
+      writingIntro: "プロダクト、システム、実装判断を再利用できる形で記録します。",
+      writingTitle: "思考の索引",
+    };
+  }
+  return {
+    contactIntro: "留下你的背景与目标，我们会从问题本身开始讨论。",
+    contactTitle: "想聊聊产品、系统或工具？",
+    discipline: "研发 · 产品设计 · 设计系统",
+    experienceIndex: "01 / 经历",
+    experienceIntro: "按时间顺序梳理关注方向、职责和持续积累。",
+    experienceTitle: "工作轨迹",
+    featured: "重点项目",
+    focusItems: [["AI 产品", "真实工作流"], ["设计系统", "一致与可扩展"], ["开发者工具", "效率与可靠性"]] as const,
+    focusTitle: "当前关注",
+    iterating: "持续迭代",
+    projectsIndex: "03 / 项目",
+    projectsIntro: "项目内容沿用现有后台数据，发布后自动进入首页。",
+    projectsTitle: "精选工作",
+    readMore: "继续阅读",
+    socialLinks: "社交链接",
+    startContact: "发起联系",
+    viewProjects: "查看项目",
+    writingIndex: "02 / 写作",
+    writingIntro: "围绕产品、系统和工程实践记录可复用的判断。",
+    writingTitle: "思考索引",
+  };
 }
 
 function textOrFallback(value: string | undefined, fallback: string) {

@@ -1,4 +1,4 @@
-import { FileText, Image, Languages, LogIn, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, FileText, Image, Languages, LogIn, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -9,6 +9,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(event: FormEvent) {
@@ -81,15 +82,27 @@ export function LoginPage() {
         </div>
         <div className={styles.field}>
           <label htmlFor="admin-password">密码</label>
-          <input
-            autoComplete="current-password"
-            id="admin-password"
-            name="password"
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            type="password"
-            value={password}
-          />
+          <div className={styles.passwordInputWrap}>
+            <input
+              autoComplete="current-password"
+              id="admin-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type={isPasswordVisible ? "text" : "password"}
+              value={password}
+            />
+            <button
+              aria-label={isPasswordVisible ? "隐藏密码" : "显示密码"}
+              aria-pressed={isPasswordVisible}
+              className={styles.passwordToggle}
+              onClick={() => setIsPasswordVisible((current) => !current)}
+              title={isPasswordVisible ? "隐藏密码" : "显示密码"}
+              type="button"
+            >
+              {isPasswordVisible ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
+            </button>
+          </div>
         </div>
         <button className={`${styles.button} ${styles.primary}`} type="submit">
           <LogIn aria-hidden="true" size={18} />

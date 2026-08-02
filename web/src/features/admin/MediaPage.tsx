@@ -123,7 +123,7 @@ export function MediaPage() {
           {items.map((item) => {
             const kind = mediaKind(item);
             const card = item.variants.card;
-            const cardSrc = mediaVariantURL(card);
+            const cardSrc = mediaVariantURL(item, "card");
             const markdownRef = mediaReference(item, kind);
             return (
               <article className={styles.mediaCard} key={item.id}>
@@ -176,8 +176,12 @@ function mediaKind(item: MediaItem) {
   return "image";
 }
 
-function mediaVariantURL(variant?: AdminMediaVariant) {
-  return variant?.url ?? variant?.path ?? "";
+function mediaVariantURL(item: MediaItem, variantName: string) {
+  const variant = item.variants[variantName];
+  if (!variant) {
+    return "";
+  }
+  return variant.url ?? `/media/${item.id}/${variantName}`;
 }
 
 function mediaKindLabel(kind: "audio" | "image" | "video") {
