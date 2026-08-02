@@ -129,7 +129,7 @@ func TestListProjectsReturnsAdminEntries(t *testing.T) {
 	}
 }
 
-func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
+func TestWritingProjectAndExperienceTermsAutoUpsert(t *testing.T) {
 	repo := newContentRepo(t)
 	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Go Notes", Tags: []string{"Go", "SQLite"}})
 	if err != nil {
@@ -146,9 +146,17 @@ func TestWritingTagsAndProjectTechsAutoUpsertTerms(t *testing.T) {
 	if len(project.Techs) != 2 || project.Techs[0].Slug != "go" || project.Techs[1].Slug != "react" {
 		t.Fatalf("project techs = %+v", project.Techs)
 	}
+
+	experience, err := repo.CreateExperience(t.Context(), ExperienceInput{Title: "Platform Role", Techs: []string{"Go", "PostgreSQL"}})
+	if err != nil {
+		t.Fatalf("CreateExperience: %v", err)
+	}
+	if len(experience.Techs) != 2 || experience.Techs[0].Slug != "go" || experience.Techs[1].Slug != "postgresql" {
+		t.Fatalf("experience techs = %+v", experience.Techs)
+	}
 }
 
-func TestWritingTagsAndProjectTechsDedupeDuplicateInputs(t *testing.T) {
+func TestWritingProjectAndExperienceTermsDedupeDuplicateInputs(t *testing.T) {
 	repo := newContentRepo(t)
 	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Duplicate Tags", Tags: []string{"Go", "Go", "React"}})
 	if err != nil {
@@ -164,6 +172,22 @@ func TestWritingTagsAndProjectTechsDedupeDuplicateInputs(t *testing.T) {
 	}
 	if len(project.Techs) != 2 || project.Techs[0].Slug != "go" || project.Techs[0].SortOrder != 10 || project.Techs[1].Slug != "react" || project.Techs[1].SortOrder != 20 {
 		t.Fatalf("project techs = %+v", project.Techs)
+	}
+
+	experience, err := repo.CreateExperience(t.Context(), ExperienceInput{Title: "Duplicate Experience Techs", Techs: []string{"Go", "Go", "React"}})
+	if err != nil {
+		t.Fatalf("CreateExperience: %v", err)
+	}
+	if len(experience.Techs) != 2 || experience.Techs[0].Slug != "go" || experience.Techs[0].SortOrder != 10 || experience.Techs[1].Slug != "react" || experience.Techs[1].SortOrder != 20 {
+		t.Fatalf("experience techs = %+v", experience.Techs)
+	}
+
+	experience, err = repo.UpdateExperience(t.Context(), experience.ID, ExperienceInput{Title: "Duplicate Experience Techs", Techs: []string{"PostgreSQL"}})
+	if err != nil {
+		t.Fatalf("UpdateExperience: %v", err)
+	}
+	if len(experience.Techs) != 1 || experience.Techs[0].Slug != "postgresql" {
+		t.Fatalf("updated experience techs = %+v", experience.Techs)
 	}
 }
 

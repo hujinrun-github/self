@@ -742,6 +742,18 @@
   font-weight: 700;
 }
 
+.timelineTags {
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.timelineTags .chip {
+  min-height: 23px;
+  padding: 2px 8px;
+  background: var(--public-surface);
+  font-size: 10px;
+}
+
 .sectionAction {
   display: flex;
   justify-content: flex-end;

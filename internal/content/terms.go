@@ -27,8 +27,45 @@ func (r *Repository) replaceProjectTechs(ctx context.Context, tx *sql.Tx, projec
 	return nil
 }
 
+func (r *Repository) replaceExperienceTechs(ctx context.Context, tx *sql.Tx, experienceID int64, names []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM experience_tech WHERE experience_id = $1`, experienceID); err != nil {
+		return err
+	}
+	terms, err := uniqueTermInputs(names)
+	if err != nil {
+		return err
+	}
+	for index, term := range terms {
+		techID, err := upsertTerm(ctx, tx, "techs", term.name, term.slug)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO experience_tech (experience_id, tech_id, sort_order) VALUES ($1, $2, $3)`, experienceID, techID, (index+1)*10); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Repository) projectTechs(ctx context.Context, projectID int64) ([]Term, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT techs.name, techs.slug, project_tech.sort_order FROM project_tech JOIN techs ON techs.id = project_tech.tech_id WHERE project_tech.project_id = $1 ORDER BY project_tech.sort_order`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	terms := []Term{}
+	for rows.Next() {
+		var term Term
+		if err := rows.Scan(&term.Name, &term.Slug, &term.SortOrder); err != nil {
+			return nil, err
+		}
+		terms = append(terms, term)
+	}
+	return terms, rows.Err()
+}
+
+func (r *Repository) experienceTechs(ctx context.Context, experienceID int64) ([]Term, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT techs.name, techs.slug, experience_tech.sort_order FROM experience_tech JOIN techs ON techs.id = experience_tech.tech_id WHERE experience_tech.experience_id = $1 ORDER BY experience_tech.sort_order`, experienceID)
 	if err != nil {
 		return nil, err
 	}

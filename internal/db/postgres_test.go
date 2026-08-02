@@ -94,6 +94,14 @@ func TestMigrationCreatesTranslationTablesAndConstraints(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationCreatesExperienceTechSchema(t *testing.T) {
+	database, _ := openTestPostgres(t)
+
+	assertTableExists(t, database, "experience_tech")
+	assertUniqueConstraintExists(t, database, "experience_tech", "UNIQUE (experience_id, tech_id)")
+	assertIndexExists(t, database, "idx_experience_tech_tech_id")
+}
+
 func TestPostgresMigrationCreatesWritingImportSchema(t *testing.T) {
 	database := openUnmigratedPostgres(t)
 	applyMigrationByVersion(t, database, "001_initial")

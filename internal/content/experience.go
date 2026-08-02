@@ -13,6 +13,7 @@ type ExperienceInput struct {
 	Organization string     `json:"organization"`
 	Description  string     `json:"description"`
 	PublishedAt  *time.Time `json:"published_at"`
+	Techs        []string   `json:"techs"`
 }
 
 type Experience struct {
@@ -24,6 +25,7 @@ type Experience struct {
 	Status       Status     `json:"status"`
 	SortOrder    int        `json:"sort_order"`
 	PublishedAt  *time.Time `json:"published_at"`
+	Techs        []Term     `json:"techs"`
 }
 
 func (r *Repository) CreateExperience(ctx context.Context, input ExperienceInput) (Experience, error) {
@@ -44,6 +46,9 @@ func (r *Repository) CreateExperience(ctx context.Context, input ExperienceInput
 	err = tx.QueryRowContext(ctx, `INSERT INTO experiences (period, title, organization, description, status, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
 		input.Period, input.Title, input.Organization, input.Description, StatusDraft, sortOrder, normalizedTimePtr(input.PublishedAt), now, now).Scan(&id)
 	if err != nil {
+		return Experience{}, err
+	}
+	if err := r.replaceExperienceTechs(ctx, tx, id, input.Techs); err != nil {
 		return Experience{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -67,12 +72,23 @@ func (r *Repository) GetExperience(ctx context.Context, id int64) (Experience, e
 		value := normalizeTime(publishedAt.Time)
 		experience.PublishedAt = &value
 	}
+	techs, err := r.experienceTechs(ctx, id)
+	if err != nil {
+		return Experience{}, err
+	}
+	experience.Techs = techs
 	return experience, nil
 }
 
 func (r *Repository) UpdateExperience(ctx context.Context, id int64, input ExperienceInput) (Experience, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Experience{}, err
+	}
+	defer tx.Rollback()
+
 	now := normalizeTime(r.clock())
-	result, err := r.db.ExecContext(ctx, `UPDATE experiences SET period = $1, title = $2, organization = $3, description = $4, published_at = COALESCE($5, published_at), updated_at = $6,
+	result, err := tx.ExecContext(ctx, `UPDATE experiences SET period = $1, title = $2, organization = $3, description = $4, published_at = COALESCE($5, published_at), updated_at = $6,
 		translation_source_version = translation_source_version + CASE
 			WHEN period IS DISTINCT FROM $1
 			  OR title IS DISTINCT FROM $2
@@ -99,6 +115,12 @@ func (r *Repository) UpdateExperience(ctx context.Context, id int64, input Exper
 	}
 	if rowsAffected == 0 {
 		return Experience{}, ErrNotFound
+	}
+	if err := r.replaceExperienceTechs(ctx, tx, id, input.Techs); err != nil {
+		return Experience{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Experience{}, err
 	}
 	return r.GetExperience(ctx, id)
 }

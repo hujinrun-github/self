@@ -151,6 +151,69 @@ describe("public locale routes", () => {
     expect(screen.queryByTestId("public-section-talks")).not.toBeInTheDocument();
   });
 
+  it("renders experience tech tags on the homepage timeline", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const rawURL = typeof input === "string" ? input : input.toString();
+        const url = new URL(rawURL, "http://localhost");
+        const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/home") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                experiences: [
+                  {
+                    description: "Built AI platform systems.",
+                    id: 1,
+                    organization: "Acme",
+                    period: "2021.03 - 2024.06",
+                    techs: [
+                      { name: "React", slug: "react", sort_order: 10 },
+                      { name: "PostgreSQL", slug: "postgresql", sort_order: 20 },
+                    ],
+                    title: "Staff Engineer",
+                  },
+                ],
+                projects: [],
+                requested_locale: locale,
+                resolved_locale: locale,
+                talks: [],
+                writing: [],
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        if (url.pathname === "/api/site/profile") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                bio: "",
+                email: "",
+                headline: "Builder",
+                name: "Chinese Name",
+                requested_locale: locale,
+                resolved_locale: locale,
+                social_links: [],
+                summary: "",
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(new Response("{}", { headers: { "Content-Type": "application/json" }, status: 200 }));
+      }),
+    );
+    const memoryRouter = createMemoryRouter(routes, { initialEntries: ["/zh"] });
+
+    renderWithApp(<RouterProvider router={memoryRouter} />);
+
+    expect(await screen.findByRole("heading", { name: "Staff Engineer" })).toBeInTheDocument();
+    expect(screen.getByText("React")).toBeInTheDocument();
+    expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
+  });
+
   it("keeps a long profile summary readable and links to the full bio", async () => {
     const longSummary =
       "I design scalable recommendation systems, AI products, and dependable platform foundations for complex, high-volume business workflows.";

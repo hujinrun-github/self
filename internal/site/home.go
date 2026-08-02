@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"portfolio/internal/content"
@@ -27,12 +28,13 @@ type HomePayload struct {
 }
 
 type ExperienceSummary struct {
-	ID           int64  `json:"id"`
-	Period       string `json:"period"`
-	Title        string `json:"title"`
-	Organization string `json:"organization"`
-	Description  string `json:"description"`
-	SortOrder    int    `json:"sort_order"`
+	ID           int64          `json:"id"`
+	Period       string         `json:"period"`
+	Title        string         `json:"title"`
+	Organization string         `json:"organization"`
+	Description  string         `json:"description"`
+	SortOrder    int            `json:"sort_order"`
+	Techs        []content.Term `json:"techs"`
 }
 
 type ContentSummary struct {
@@ -99,7 +101,10 @@ func (r *HomeRepository) homeExperiences(ctx context.Context) ([]ExperienceSumma
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return r.withExperienceTechs(ctx, items)
 }
 
 func (r *HomeRepository) homeExperiencesByLocale(ctx context.Context, locale i18n.Locale) ([]ExperienceSummary, error) {
@@ -137,6 +142,53 @@ func (r *HomeRepository) homeExperiencesByLocale(ctx context.Context, locale i18
 			return nil, err
 		}
 		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return r.withExperienceTechs(ctx, items)
+}
+
+func (r *HomeRepository) withExperienceTechs(ctx context.Context, items []ExperienceSummary) ([]ExperienceSummary, error) {
+	for index := range items {
+		items[index].Techs = []content.Term{}
+	}
+	if len(items) == 0 {
+		return items, nil
+	}
+
+	positions := make(map[int64]int, len(items))
+	placeholders := make([]string, len(items))
+	args := make([]any, len(items))
+	for index, item := range items {
+		positions[item.ID] = index
+		placeholders[index] = fmt.Sprintf("$%d", index+1)
+		args[index] = item.ID
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT experience_tech.experience_id, techs.name, techs.slug, experience_tech.sort_order
+		FROM experience_tech
+		JOIN techs ON techs.id = experience_tech.tech_id
+		WHERE experience_tech.experience_id IN (`+strings.Join(placeholders, ", ")+`)
+		ORDER BY experience_tech.experience_id, experience_tech.sort_order
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			experienceID int64
+			term         content.Term
+		)
+		if err := rows.Scan(&experienceID, &term.Name, &term.Slug, &term.SortOrder); err != nil {
+			return nil, err
+		}
+		if index, ok := positions[experienceID]; ok {
+			items[index].Techs = append(items[index].Techs, term)
+		}
 	}
 	return items, rows.Err()
 }

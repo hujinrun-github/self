@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
@@ -107,6 +107,27 @@ describe("LoginPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /登录/i }));
 
     expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+  });
+
+  it("toggles password visibility from the login form", async () => {
+    renderWithApp(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    const passwordInput = screen.getByLabelText("密码");
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    await userEvent.type(passwordInput, "visible-secret");
+    await userEvent.click(screen.getByRole("button", { name: "显示密码" }));
+
+    expect(passwordInput).toHaveAttribute("type", "text");
+    expect(passwordInput).toHaveValue("visible-secret");
+
+    await userEvent.click(screen.getByRole("button", { name: "隐藏密码" }));
+
+    expect(passwordInput).toHaveAttribute("type", "password");
   });
 });
 
@@ -915,7 +936,7 @@ describe("MediaPage", () => {
     renderWithApp(<MediaPage />);
 
     await waitFor(() => expect(screen.getByText("cover.png")).toBeInTheDocument());
-    expect(document.querySelector("img")).toHaveAttribute("src", "/uploads/ab/cd/card.jpg");
+    expect(document.querySelector("img")).toHaveAttribute("src", "/media/1/card");
     expect(screen.getByRole("button", { name: /删除 cover\.png/i })).toBeDisabled();
   });
 });
@@ -990,6 +1011,72 @@ describe("ContentEditPage", () => {
     expect(screen.getByRole("heading", { name: "先保存中文主内容" })).toBeInTheDocument();
     expect(screen.getByText(`保存后会自动进入${resourceLabel}的英文翻译页。`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存中文草稿并继续英文翻译" })).toBeInTheDocument();
+  });
+
+  it("uses calendar month controls to save an experience period range", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 8, status: "draft" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 201,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [{ path: "/admin/experience/new", element: <ContentEditPage resource="experience" /> }],
+      { initialEntries: ["/admin/experience/new"] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    await userEvent.type(screen.getByLabelText("标题"), "Staff Engineer");
+    await userEvent.type(screen.getByLabelText("机构"), "Acme");
+    await userEvent.type(screen.getByLabelText("技术栈 Tags"), "Go{enter}React{enter}");
+    fireEvent.change(screen.getByLabelText("开始月份"), { target: { value: "2021-03" } });
+    fireEvent.change(screen.getByLabelText("结束月份"), { target: { value: "2024-06" } });
+
+    expect(screen.getByText("2021.03 - 2024.06")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /保存草稿/i }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      organization: "Acme",
+      period: "2021.03 - 2024.06",
+      techs: ["Go", "React"],
+      title: "Staff Engineer",
+    });
+  });
+
+  it("parses an existing current experience period into the month controls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            description: "Existing description",
+            id: 5,
+            organization: "Acme",
+            period: "2021.03 - 至今",
+            techs: [{ name: "Go", slug: "go", sort_order: 10 }],
+            title: "Staff Engineer",
+          }),
+          { headers: { "Content-Type": "application/json" }, status: 200 },
+        ),
+      ),
+    );
+
+    const router = createMemoryRouter(
+      [{ path: "/admin/experience/:id", element: <ContentEditPage resource="experience" /> }],
+      { initialEntries: ["/admin/experience/5"] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    expect(await screen.findByDisplayValue("Staff Engineer")).toBeInTheDocument();
+    expect(screen.getByText("Go")).toBeInTheDocument();
+    expect(screen.getByLabelText("开始月份")).toHaveValue("2021-03");
+    expect(screen.getByLabelText("至今")).toBeChecked();
+    expect(screen.getByText("2021.03 - 至今")).toBeInTheDocument();
   });
 
   it("creates the Chinese source and continues directly to the selected translation", async () => {

@@ -17,12 +17,18 @@ type Summary = {
   summary?: string;
 };
 
+type Term = {
+  name: string;
+  slug?: string;
+};
+
 type Experience = {
   id: number;
   period: string;
   title: string;
   organization: string;
   description: string;
+  techs?: Term[];
 };
 
 type HomePayload = {
@@ -163,6 +169,15 @@ export function HomePage() {
               <div className={styles.timelineBody}>
                 <h3>{item.title}</h3>
                 <p className={styles.muted}>{item.organization}</p>
+                {item.techs?.length ? (
+                  <div aria-label="技术栈" className={`${styles.chipRow} ${styles.timelineTags}`}>
+                    {item.techs.map((tech) => (
+                      <span className={styles.chip} key={tech.slug ?? tech.name}>
+                        {tech.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <p className={styles.bodyText}>{item.description}</p>
             </li>

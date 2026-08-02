@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, Save, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Save, X } from "lucide-react";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -556,7 +556,11 @@ function TranslationFields({
           <div className={styles.grid}>
             <Field label="标题" onChange={(value) => update("title", value)} required value={translation.title} />
             <Field label="机构" onChange={(value) => update("organization", value)} value={translation.organization} />
-            <Field label="时间段" onChange={(value) => update("period", value)} value={translation.period} />
+            <ExperiencePeriodPicker
+              idPrefix={`experience-period-${locale}`}
+              onChange={(value) => update("period", value)}
+              value={translation.period}
+            />
           </div>
         </section>
 
@@ -716,12 +720,24 @@ function ExperienceFields({
 }) {
   return (
     <>
-      <section className={styles.formSection}>
-        <h2>角色信息</h2>
-        <div className={styles.grid}>
+      <section className={`${styles.formSection} ${styles.experienceSection}`}>
+        <div className={styles.sectionHeader}>
+          <div>
+            <h2>角色信息</h2>
+            <p>选择起止月份后会自动生成时间段，列表和公开页面会沿用这段展示文本。</p>
+          </div>
+        </div>
+        <div className={`${styles.grid} ${styles.experienceGrid}`}>
           <Field label="标题" onChange={updateTitle} required value={form.title} />
           <Field label="机构" onChange={(value) => update("organization", value)} value={form.organization} />
-          <Field label="时间段" onChange={(value) => update("period", value)} value={form.period} />
+          <ExperiencePeriodPicker onChange={(value) => update("period", value)} value={form.period} />
+          <TermsInput
+            className={styles.experienceTerms}
+            help="添加这一段经历涉及的技术栈，例如 React、Go、PostgreSQL。"
+            label="技术栈 Tags"
+            onChange={(value) => update("terms", value)}
+            value={form.terms}
+          />
         </div>
       </section>
       <section className={styles.formSection}>
@@ -730,6 +746,111 @@ function ExperienceFields({
       </section>
     </>
   );
+}
+
+function ExperiencePeriodPicker({
+  idPrefix = "experience-period",
+  onChange,
+  value,
+}: {
+  idPrefix?: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const parts = useMemo(() => periodPartsFrom(value), [value]);
+  const displayValue = formattedPeriodFromParts(parts) || value.trim();
+  const startID = `${idPrefix}-start`;
+  const endID = `${idPrefix}-end`;
+  const currentID = `${idPrefix}-current`;
+
+  function updatePeriod(nextParts: PeriodParts) {
+    onChange(formattedPeriodFromParts(nextParts));
+  }
+
+  return (
+    <div className={`${styles.field} ${styles.periodField}`}>
+      <div className={styles.labelRow}>
+        <label>时间段</label>
+        <span>按月份选择</span>
+      </div>
+      <div className={styles.periodPicker}>
+        <div className={styles.periodControlGrid}>
+          <label className={styles.periodControl} htmlFor={startID}>
+            <span>开始月份</span>
+            <input
+              id={startID}
+              onChange={(event) => updatePeriod({ ...parts, startMonth: event.target.value })}
+              type="month"
+              value={parts.startMonth}
+            />
+          </label>
+          <label className={styles.periodControl} htmlFor={endID}>
+            <span>结束月份</span>
+            <input
+              disabled={parts.isCurrent}
+              id={endID}
+              min={parts.startMonth || undefined}
+              onChange={(event) => updatePeriod({ ...parts, endMonth: event.target.value, isCurrent: false })}
+              type="month"
+              value={parts.isCurrent ? "" : parts.endMonth}
+            />
+          </label>
+          <label className={styles.periodCurrent} htmlFor={currentID}>
+            <input
+              checked={parts.isCurrent}
+              id={currentID}
+              onChange={(event) => updatePeriod({ ...parts, endMonth: "", isCurrent: event.target.checked })}
+              type="checkbox"
+            />
+            <span>至今</span>
+          </label>
+        </div>
+        <div className={`${styles.periodSummary} ${displayValue ? "" : styles.periodSummaryEmpty}`}>
+          <CalendarDays aria-hidden="true" size={17} />
+          <span>{displayValue || "选择开始和结束月份后自动生成"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type PeriodParts = {
+  endMonth: string;
+  isCurrent: boolean;
+  startMonth: string;
+};
+
+function periodPartsFrom(value: string): PeriodParts {
+  const matches = [...value.matchAll(/(\d{4})\s*(?:[./-]|年)?\s*(0?[1-9]|1[0-2])\s*月?/g)];
+  const months = matches
+    .map((match) => monthInputValue(match[1], match[2]))
+    .filter((month): month is string => Boolean(month));
+  return {
+    endMonth: months[1] ?? "",
+    isCurrent: /至今|现在|current|present|now/i.test(value),
+    startMonth: months[0] ?? "",
+  };
+}
+
+function monthInputValue(year: string | undefined, month: string | undefined) {
+  if (!year || !month) {
+    return "";
+  }
+  return `${year}-${month.padStart(2, "0")}`;
+}
+
+function formattedPeriodFromParts(parts: PeriodParts) {
+  const start = displayMonth(parts.startMonth);
+  const end = parts.isCurrent ? "至今" : displayMonth(parts.endMonth);
+  if (start && end) {
+    return `${start} - ${end}`;
+  }
+  return start || end;
+}
+
+function displayMonth(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})$/);
+  return match ? `${match[1]}.${match[2]}` : "";
 }
 
 function Field({
@@ -777,11 +898,13 @@ function Field({
 }
 
 function TermsInput({
+  className,
   help,
   label,
   onChange,
   value,
 }: {
+  className?: string;
   help: string;
   label: string;
   onChange: (value: string) => void;
@@ -823,7 +946,7 @@ function TermsInput({
   }
 
   return (
-    <div className={styles.field}>
+    <div className={`${styles.field} ${className ?? ""}`}>
       <div className={styles.labelRow}>
         <label htmlFor={id}>{label}</label>
         <span>回车或逗号可新增一项</span>
@@ -907,6 +1030,7 @@ function payloadFor(resource: Resource, form: ContentForm) {
       description: form.summary,
       organization: form.organization,
       period: form.period,
+      techs: termsFrom(form.terms),
       title: form.title,
     };
   }
@@ -1027,6 +1151,7 @@ function formFromResponse(resource: Resource, response: Record<string, unknown>)
       organization: stringValue(response.organization),
       period: stringValue(response.period),
       summary: stringValue(response.description),
+      terms: termsToInput(response.techs),
       title: stringValue(response.title),
     };
   }
