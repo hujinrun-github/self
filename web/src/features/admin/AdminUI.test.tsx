@@ -1130,6 +1130,67 @@ describe("ContentEditPage", () => {
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.method).toBe("POST");
   });
 
+  it("generates a writing excerpt draft with AI", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ excerpt: "AI 生成的文章摘要，保存前可以继续人工修改。" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [{ path: "/admin/writing/new", element: <ContentEditPage resource="writing" /> }],
+      { initialEntries: ["/admin/writing/new"] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    await userEvent.type(screen.getByLabelText("标题"), "AI 工程笔记");
+    await userEvent.type(screen.getByLabelText("文章 Tags"), "AI{enter}工程{enter}");
+    await userEvent.type(await screen.findByLabelText("Markdown 正文"), "# 正文\n这里是文章内容。");
+    await userEvent.click(screen.getByRole("button", { name: "AI 生成摘要" }));
+
+    expect(await screen.findByDisplayValue("AI 生成的文章摘要，保存前可以继续人工修改。")).toBeInTheDocument();
+    expect(screen.getByText("AI 摘要已生成，请人工确认后保存。")).toBeInTheDocument();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/writing/excerpt/generate");
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      content_md: "# 正文\n这里是文章内容。",
+      tags: ["AI", "工程"],
+      title: "AI 工程笔记",
+    });
+  });
+
+  it("saves writing tags with the article payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: 31, slug: "ai-notes", status: "draft" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 201,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [{ path: "/admin/writing/new", element: <ContentEditPage resource="writing" /> }],
+      { initialEntries: ["/admin/writing/new"] },
+    );
+
+    renderWithApp(<RouterProvider router={router} />);
+
+    await userEvent.type(screen.getByLabelText("标题"), "AI Notes");
+    await userEvent.type(screen.getByLabelText("文章 Tags"), "AI{enter}Architecture{enter}");
+    await userEvent.click(screen.getByRole("button", { name: /保存草稿/i }));
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/writing");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      tags: ["AI", "Architecture"],
+      title: "AI Notes",
+    });
+  });
+
   it("loads an existing project into edit mode and saves with PUT", async () => {
     const fetchMock = vi
       .fn()

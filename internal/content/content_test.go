@@ -191,6 +191,86 @@ func TestWritingProjectAndExperienceTermsDedupeDuplicateInputs(t *testing.T) {
 	}
 }
 
+func TestWritingEngagementRoutesStoreLikesAndComments(t *testing.T) {
+	repo := newContentRepo(t)
+	now := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)
+	repo.clock = func() time.Time { return now }
+	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Engaged Writing", ContentMD: "Body"})
+	if err != nil {
+		t.Fatalf("CreateWriting: %v", err)
+	}
+	if err := repo.SetWritingStatus(t.Context(), writing.ID, StatusPublished, nil); err != nil {
+		t.Fatalf("SetWritingStatus: %v", err)
+	}
+
+	router := chi.NewRouter()
+	RegisterSiteRoutes(router, repo)
+
+	likeRecorder := httptest.NewRecorder()
+	router.ServeHTTP(likeRecorder, httptest.NewRequest(http.MethodPost, "/api/site/writing/engaged-writing/like?locale=zh", nil))
+	if likeRecorder.Code != http.StatusOK {
+		t.Fatalf("like status = %d body=%s", likeRecorder.Code, likeRecorder.Body.String())
+	}
+	var likeBody struct {
+		LikeCount int `json:"like_count"`
+	}
+	if err := json.Unmarshal(likeRecorder.Body.Bytes(), &likeBody); err != nil {
+		t.Fatalf("decode like response: %v", err)
+	}
+	if likeBody.LikeCount != 1 {
+		t.Fatalf("like_count = %d, want 1", likeBody.LikeCount)
+	}
+
+	commentRecorder := httptest.NewRecorder()
+	router.ServeHTTP(
+		commentRecorder,
+		httptest.NewRequest(http.MethodPost, "/api/site/writing/engaged-writing/comments?locale=zh", bytes.NewBufferString(`{"author_name":"Ada","body":"Great note."}`)),
+	)
+	if commentRecorder.Code != http.StatusCreated {
+		t.Fatalf("comment status = %d body=%s", commentRecorder.Code, commentRecorder.Body.String())
+	}
+	var comment WritingComment
+	if err := json.Unmarshal(commentRecorder.Body.Bytes(), &comment); err != nil {
+		t.Fatalf("decode comment response: %v", err)
+	}
+	if comment.AuthorName != "Ada" || comment.Body != "Great note." {
+		t.Fatalf("comment = %+v", comment)
+	}
+
+	engagementRecorder := httptest.NewRecorder()
+	router.ServeHTTP(engagementRecorder, httptest.NewRequest(http.MethodGet, "/api/site/writing/engaged-writing/engagement?locale=zh", nil))
+	if engagementRecorder.Code != http.StatusOK {
+		t.Fatalf("engagement status = %d body=%s", engagementRecorder.Code, engagementRecorder.Body.String())
+	}
+	var engagement WritingEngagement
+	if err := json.Unmarshal(engagementRecorder.Body.Bytes(), &engagement); err != nil {
+		t.Fatalf("decode engagement response: %v", err)
+	}
+	if engagement.LikeCount != 1 || len(engagement.Comments) != 1 || engagement.Comments[0].AuthorName != "Ada" {
+		t.Fatalf("engagement = %+v", engagement)
+	}
+}
+
+func TestWritingCommentRouteRejectsEmptyPayload(t *testing.T) {
+	repo := newContentRepo(t)
+	writing, err := repo.CreateWriting(t.Context(), WritingInput{Title: "Commented Writing", ContentMD: "Body"})
+	if err != nil {
+		t.Fatalf("CreateWriting: %v", err)
+	}
+	if err := repo.SetWritingStatus(t.Context(), writing.ID, StatusPublished, nil); err != nil {
+		t.Fatalf("SetWritingStatus: %v", err)
+	}
+	router := chi.NewRouter()
+	RegisterSiteRoutes(router, repo)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/site/writing/commented-writing/comments?locale=zh", bytes.NewBufferString(`{"author_name":"","body":""}`)))
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestConcurrentProjectCreateAllocatesUniqueSlugAndSortOrder(t *testing.T) {
 	repo := newContentRepo(t)
 	const createCount = 12
@@ -669,6 +749,35 @@ func TestSaveWritingTranslationUsesIfNoneMatchForFirstLocaleWrite(t *testing.T) 
 	}
 }
 
+func TestGenerateWritingExcerptRouteReturnsDraft(t *testing.T) {
+	repo := newContentRepo(t)
+	generator := &stubContentTranslationGenerator{
+		writingExcerpt: translation.GeneratedWritingExcerpt{Excerpt: "这是一段 AI 生成的文章摘要。"},
+	}
+	router := chi.NewRouter()
+	RegisterAdminRoutes(router, repo, generator)
+
+	body := bytes.NewBufferString(`{"title":"中文文章","content_md":"# 正文\n这里是文章内容。","tags":["AI","工程"]}`)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/admin/writing/excerpt/generate", body))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var response translation.GeneratedWritingExcerpt
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Excerpt != "这是一段 AI 生成的文章摘要。" {
+		t.Fatalf("excerpt = %q", response.Excerpt)
+	}
+	if generator.writingExcerptSource.Title != "中文文章" || generator.writingExcerptSource.ContentMD == "" {
+		t.Fatalf("source = %+v", generator.writingExcerptSource)
+	}
+	if len(generator.writingExcerptSource.Tags) != 2 || generator.writingExcerptSource.Tags[0] != "AI" || generator.writingExcerptSource.Tags[1] != "工程" {
+		t.Fatalf("source tags = %#v", generator.writingExcerptSource.Tags)
+	}
+}
+
 func TestGenerateTalkTranslationRouteSavesDraft(t *testing.T) {
 	repo := newContentRepo(t)
 	talk, err := repo.CreateTalk(t.Context(), TalkInput{
@@ -855,6 +964,10 @@ func (g *stubProjectTranslationGenerator) GenerateWriting(_ context.Context, _ t
 	return translation.GeneratedWritingTranslation{}, g.err
 }
 
+func (g *stubProjectTranslationGenerator) GenerateWritingExcerpt(_ context.Context, _ translation.WritingExcerptSource) (translation.GeneratedWritingExcerpt, error) {
+	return translation.GeneratedWritingExcerpt{}, g.err
+}
+
 func (g *stubProjectTranslationGenerator) GenerateTalk(_ context.Context, _ translation.TalkTranslationSource, _ i18n.Locale) (translation.GeneratedTalkTranslation, error) {
 	return translation.GeneratedTalkTranslation{}, g.err
 }
@@ -865,21 +978,28 @@ func (g *stubProjectTranslationGenerator) GenerateExperience(_ context.Context, 
 
 type stubContentTranslationGenerator struct {
 	stubProjectTranslationGenerator
-	writing          translation.GeneratedWritingTranslation
-	writingSource    translation.WritingTranslationSource
-	writingLocale    i18n.Locale
-	talk             translation.GeneratedTalkTranslation
-	talkSource       translation.TalkTranslationSource
-	talkLocale       i18n.Locale
-	experience       translation.GeneratedExperienceTranslation
-	experienceSource translation.ExperienceTranslationSource
-	experienceLocale i18n.Locale
+	writing              translation.GeneratedWritingTranslation
+	writingSource        translation.WritingTranslationSource
+	writingLocale        i18n.Locale
+	writingExcerpt       translation.GeneratedWritingExcerpt
+	writingExcerptSource translation.WritingExcerptSource
+	talk                 translation.GeneratedTalkTranslation
+	talkSource           translation.TalkTranslationSource
+	talkLocale           i18n.Locale
+	experience           translation.GeneratedExperienceTranslation
+	experienceSource     translation.ExperienceTranslationSource
+	experienceLocale     i18n.Locale
 }
 
 func (g *stubContentTranslationGenerator) GenerateWriting(_ context.Context, source translation.WritingTranslationSource, locale i18n.Locale) (translation.GeneratedWritingTranslation, error) {
 	g.writingSource = source
 	g.writingLocale = locale
 	return g.writing, nil
+}
+
+func (g *stubContentTranslationGenerator) GenerateWritingExcerpt(_ context.Context, source translation.WritingExcerptSource) (translation.GeneratedWritingExcerpt, error) {
+	g.writingExcerptSource = source
+	return g.writingExcerpt, nil
 }
 
 func (g *stubContentTranslationGenerator) GenerateTalk(_ context.Context, source translation.TalkTranslationSource, locale i18n.Locale) (translation.GeneratedTalkTranslation, error) {

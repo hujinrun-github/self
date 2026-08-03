@@ -1,5 +1,5 @@
-import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { MediaMap } from "../../lib/types";
 import { renderWithApp } from "../../test/render";
@@ -28,6 +28,10 @@ const media: MediaMap = {
   },
 };
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("MarkdownView", () => {
   it("does not render raw HTML", () => {
     renderWithApp(<MarkdownView markdown={"Hello <script>alert(1)</script>"} media={{}} />);
@@ -39,9 +43,47 @@ describe("MarkdownView", () => {
     expect(screen.getByText("bad").closest("a")).not.toHaveAttribute("href");
   });
 
-  it("rejects remote images", () => {
-    const { container } = renderWithApp(
+  it("renders safe remote images", () => {
+    renderWithApp(
       <MarkdownView markdown={"![remote](https://example.com/a.png)"} media={{}} />,
+    );
+    const image = screen.getByRole("img", { name: "remote" });
+    expect(image).toHaveAttribute("src", "https://example.com/a.png");
+    expect(image).toHaveAttribute("referrerPolicy", "no-referrer");
+  });
+
+  it("previews images when pasted markdown splits the label and url across lines", () => {
+    renderWithApp(
+      <MarkdownView markdown={"![remote]\n(https://example.com/a.png)"} media={{}} />,
+    );
+    expect(screen.getByRole("img", { name: "remote" })).toHaveAttribute(
+      "src",
+      "https://example.com/a.png",
+    );
+  });
+
+  it("applies heading anchors in markdown order", () => {
+    renderWithApp(
+      <MarkdownView
+        headingIDs={["first-heading", "second-heading"]}
+        markdown={"# First heading\n\n## Second heading"}
+        media={{}}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "First heading" })).toHaveAttribute(
+      "id",
+      "first-heading",
+    );
+    expect(screen.getByRole("heading", { name: "Second heading" })).toHaveAttribute(
+      "id",
+      "second-heading",
+    );
+  });
+
+  it("rejects unsafe remote images", () => {
+    const { container } = renderWithApp(
+      <MarkdownView markdown={"![unsafe](javascript:alert(1))"} media={{}} />,
     );
     expect(container.querySelector("img")).toBeNull();
   });

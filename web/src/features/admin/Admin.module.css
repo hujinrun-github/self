@@ -234,11 +234,11 @@
 
 .main {
   display: grid;
-  width: min(100%, 1180px);
+  width: 100%;
   min-width: 0;
   align-content: start;
   gap: 20px;
-  margin: 0 auto;
+  margin: 0;
   padding: 0 0 56px;
 }
 
@@ -622,6 +622,11 @@
   border-color: #9fb9e6;
   background: #f7fbff;
   color: #1d4ed8;
+}
+
+.inlineToolButton:disabled {
+  cursor: wait;
+  opacity: 0.66;
 }
 
 .field input,

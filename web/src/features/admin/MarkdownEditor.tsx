@@ -8,6 +8,7 @@ import "@uiw/react-markdown-preview/markdown.css";
 import styles from "./Admin.module.css";
 
 const MDEditor = lazy(() => import("@uiw/react-md-editor/nohighlight"));
+const MarkdownPreview = lazy(() => import("@uiw/react-markdown-preview/nohighlight"));
 
 type MarkdownEditorProps = {
   description?: string;
@@ -110,6 +111,7 @@ function EditorSurface({
     <Suspense fallback={<div className={styles.editorLoading}>Loading editor...</div>}>
       <MDEditor
         commandsFilter={hideNativeFullscreen}
+        components={{ preview: (source) => <MarkdownPreview source={markdownPreviewSource(source)} /> }}
         height={fullscreen ? "100%" : compact ? 360 : 420}
         onChange={(nextValue) => onChange(nextValue ?? "")}
         preview={compact ? "edit" : "live"}
@@ -126,6 +128,20 @@ function EditorSurface({
 
 function hideNativeFullscreen(command: ICommand): false | ICommand {
   return command.keyCommand === "fullscreen" ? false : command;
+}
+
+function markdownPreviewSource(source: string) {
+  return normalizeLooseImageReferences(source).replace(
+    /media:\/\/asset\/(\d+)\/([a-zA-Z0-9_-]+)/g,
+    "/media/$1/$2",
+  );
+}
+
+function normalizeLooseImageReferences(source: string) {
+  return source.replace(
+    /!\[([^\]\r\n]*)\][ \t]*(?:\r?\n[ \t]*)+\((https?:\/\/[^\s)]+|media:\/\/asset\/\d+\/[a-zA-Z0-9_-]+)\)/g,
+    "![$1]($2)",
+  );
 }
 
 function useMediaQuery(query: string) {

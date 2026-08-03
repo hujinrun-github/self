@@ -1,4 +1,5 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 
@@ -447,6 +448,109 @@ describe("public locale routes", () => {
       expect(screen.getByRole("link", { name: "EN" })).toHaveAttribute("href", "/en/writing/example");
       expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex, follow");
     });
+  });
+
+  it("renders writing quick jumps and supports likes and comments", async () => {
+    window.localStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const rawURL = typeof input === "string" ? input : input.toString();
+        const url = new URL(rawURL, "http://localhost");
+        const locale = url.searchParams.get("locale") ?? "zh";
+        const method = init?.method ?? "GET";
+        if (url.pathname === "/api/site/writing/example/like" && method === "POST") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ like_count: 4 }), { headers: { "Content-Type": "application/json" }, status: 200 }),
+          );
+        }
+        if (url.pathname === "/api/site/writing/example/comments" && method === "POST") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                author_name: "Lin",
+                body: "New thought",
+                created_at: "2026-07-20T10:00:00Z",
+                id: 2,
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 201 },
+            ),
+          );
+        }
+        if (url.pathname === "/api/site/writing/example/engagement") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                comments: [{ author_name: "Ada", body: "First comment", created_at: "2026-07-19T10:00:00Z", id: 1 }],
+                like_count: 3,
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        if (url.pathname === "/api/site/writing/example") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                alternates: [],
+                item: {
+                  content_md: "# Body",
+                  excerpt: "Article summary",
+                  id: 10,
+                  tags: [{ name: "AI", slug: "ai" }],
+                  title: "Article Title",
+                },
+                requested_locale: locale,
+                resolved_locale: locale,
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        if (url.pathname === "/api/site/writing") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  { excerpt: "Read next", id: 11, slug: "related-note", title: "Related Note" },
+                  { excerpt: "Current", id: 10, slug: "example", title: "Article Title" },
+                ],
+                requested_locale: locale,
+                resolved_locale: locale,
+              }),
+              { headers: { "Content-Type": "application/json" }, status: 200 },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ items: [], requested_locale: locale, resolved_locale: locale }), {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }),
+        );
+      }),
+    );
+
+    const memoryRouter = createMemoryRouter(routes, { initialEntries: ["/zh/writing/example"] });
+
+    renderWithApp(<RouterProvider router={memoryRouter} />);
+
+    expect(await screen.findByRole("heading", { name: "Article Title" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "快捷跳转" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Related Note/ })).toHaveAttribute("href", "/zh/writing/related-note");
+    expect(await screen.findByText("First comment")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /点赞/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /已点赞/ })).toHaveTextContent("4");
+    });
+
+    await userEvent.type(screen.getByLabelText("昵称"), "Lin");
+    await userEvent.type(screen.getByLabelText("评论内容"), "New thought");
+    await userEvent.click(screen.getByRole("button", { name: "发布评论" }));
+
+    expect(await screen.findByText("New thought")).toBeInTheDocument();
   });
 
   it("loads the localized bio page from profile data and noindexes fallback locales", async () => {

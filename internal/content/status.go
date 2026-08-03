@@ -21,6 +21,7 @@ var (
 	ErrDeleteBlocked       = errors.New("only never-published drafts can be deleted")
 	ErrInvalidReorder      = errors.New("reorder must include all resource ids")
 	ErrUnsafeMarkdownMedia = errors.New("markdown image references must use media assets instead of raw uploads paths")
+	ErrInvalidComment      = errors.New("comment name and body are required")
 	ErrNotFound            = errors.New("content not found")
 )
 
