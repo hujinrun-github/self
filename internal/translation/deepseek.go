@@ -120,6 +120,24 @@ func (s *Service) generateWritingDeepSeek(ctx context.Context, source WritingTra
 	return generated, nil
 }
 
+func (s *Service) generateWritingExcerptDeepSeek(ctx context.Context, source WritingExcerptSource) (GeneratedWritingExcerpt, error) {
+	prompt, err := buildWritingExcerptPrompt(source)
+	if err != nil {
+		return GeneratedWritingExcerpt{}, err
+	}
+
+	var generated GeneratedWritingExcerpt
+	if err := s.deepSeekJSON(ctx, writingExcerptSystemPrompt(), prompt, &generated); err != nil {
+		return GeneratedWritingExcerpt{}, err
+	}
+
+	generated.Excerpt = strings.TrimSpace(generated.Excerpt)
+	if generated.Excerpt == "" {
+		return GeneratedWritingExcerpt{}, ErrInvalidResponse
+	}
+	return generated, nil
+}
+
 func (s *Service) generateTalkDeepSeek(ctx context.Context, source TalkTranslationSource, locale i18n.Locale) (GeneratedTalkTranslation, error) {
 	prompt, err := buildTalkPrompt(source, locale)
 	if err != nil {
@@ -271,6 +289,19 @@ func buildWritingPrompt(source WritingTranslationSource, locale i18n.Locale) (st
 	return string(body), nil
 }
 
+func buildWritingExcerptPrompt(source WritingExcerptSource) (string, error) {
+	payload := struct {
+		Source WritingExcerptSource `json:"source"`
+	}{
+		Source: source,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
 func buildTalkPrompt(source TalkTranslationSource, locale i18n.Locale) (string, error) {
 	payload := struct {
 		TargetLocale string                `json:"target_locale"`
@@ -354,6 +385,10 @@ func writingSystemPrompt(locale i18n.Locale) string {
 		"Translate Chinese portfolio writing content into natural %s and return JSON only with keys title, slug, excerpt, content_md, seo_title, seo_description. Keep markdown structure in content_md. Slug must be lowercase ASCII romanized words separated by hyphens. Do not omit keys. If there is no long body, return content_md as an empty string.",
 		localeName(locale),
 	)
+}
+
+func writingExcerptSystemPrompt() string {
+	return "Generate a concise Chinese excerpt for a portfolio writing entry and return JSON only with key excerpt. Use the supplied title, markdown body, and tags as context. The excerpt should be 70-140 Chinese characters, plain text only, specific enough for a public article card, and should not contain markdown."
 }
 
 func talkSystemPrompt(locale i18n.Locale) string {

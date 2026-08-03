@@ -184,9 +184,15 @@ func reviewProjectTranslationHandler(repo *Repository) http.HandlerFunc {
 }
 
 func writeTranslationResult(w http.ResponseWriter, err error, message string) {
-	switch {
-	case err == nil:
+	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeTranslationError(w, err, message)
+}
+
+func writeTranslationError(w http.ResponseWriter, err error, message string) {
+	switch {
 	case errors.Is(err, ErrNotFound):
 		httpserver.WriteError(w, http.StatusNotFound, "not_found", "Content not found", nil)
 	case errors.Is(err, ErrPreconditionRequired):

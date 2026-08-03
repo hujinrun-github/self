@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, CheckCircle2, Save, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Save, Sparkles, X } from "lucide-react";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -118,6 +118,7 @@ function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
   const [detailStatus, setDetailStatus] = useState<CreatedContent["status"] | null>(null);
   const [form, setForm] = useState<ContentForm>(emptyForm);
   const [message, setMessage] = useState("");
+  const [generatingSummary, setGeneratingSummary] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [translations, setTranslations] = useState<Record<TranslationLocale, TranslationState>>(emptyTranslationMap);
@@ -246,6 +247,35 @@ function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
       setMessage(translationActionError(error, "生成辅助语言失败。"));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function generateWritingSummary() {
+    if (typedResource !== "writing") {
+      return;
+    }
+    if (!form.title.trim() && !form.body.trim()) {
+      setMessage("请先填写标题或正文，再生成摘要。");
+      return;
+    }
+
+    setMessage("");
+    setGeneratingSummary(true);
+    try {
+      const generated = await apiFetch<{ excerpt: string }>("/api/admin/writing/excerpt/generate", {
+        body: JSON.stringify({
+          content_md: form.body,
+          tags: termsFrom(form.terms),
+          title: form.title,
+        }),
+        method: "POST",
+      });
+      setForm((current) => ({ ...current, summary: generated.excerpt ?? current.summary }));
+      setMessage("AI 摘要已生成，请人工确认后保存。");
+    } catch (error) {
+      setMessage(translationActionError(error, "AI 摘要生成失败。"));
+    } finally {
+      setGeneratingSummary(false);
     }
   }
 
@@ -443,6 +473,8 @@ function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
         <RoutableContentFields
           config={config}
           form={form}
+          generatingSummary={generatingSummary}
+          onGenerateSummary={generateWritingSummary}
           resource={typedResource}
           update={update}
           updateTitle={updateTitle}
@@ -636,12 +668,16 @@ function TranslationFields({
 function RoutableContentFields({
   config,
   form,
+  generatingSummary = false,
+  onGenerateSummary,
   resource,
   update,
   updateTitle,
 }: {
   config: ResourceConfig;
   form: ContentForm;
+  generatingSummary?: boolean;
+  onGenerateSummary?: () => void;
   resource: Resource;
   update: <Key extends keyof ContentForm>(key: Key, value: ContentForm[Key]) => void;
   updateTitle: (value: string) => void;
@@ -655,7 +691,24 @@ function RoutableContentFields({
           <Field label="标题" onChange={updateTitle} required value={form.title} />
           <Field label="Slug" onChange={(value) => update("slug", value)} value={form.slug} />
         </div>
-        <Field label={config.summaryLabel} onChange={(value) => update("summary", value)} textarea value={form.summary} />
+        {resource === "writing" && onGenerateSummary ? (
+          <WritingSummaryField
+            busy={generatingSummary}
+            onChange={(value) => update("summary", value)}
+            onGenerate={onGenerateSummary}
+            value={form.summary}
+          />
+        ) : (
+          <Field label={config.summaryLabel} onChange={(value) => update("summary", value)} textarea value={form.summary} />
+        )}
+        {resource === "writing" ? (
+          <TermsInput
+            help="添加文章主题标签，例如 AI、工程、架构或产品。"
+            label="文章 Tags"
+            onChange={(value) => update("terms", value)}
+            value={form.terms}
+          />
+        ) : null}
       </section>
 
       {hasMarkdownBody ? (
@@ -686,10 +739,10 @@ function RoutableContentFields({
             <Field label="时长（分钟）" onChange={(value) => update("durationMinutes", value)} type="number" value={form.durationMinutes} />
           </div>
         ) : null}
-        {resource === "projects" || resource === "writing" ? (
+        {resource === "projects" ? (
           <TermsInput
-            help={resource === "projects" ? "添加技术栈，例如 Go、React、SQLite。" : "添加主题标签，例如 Notes、Engineering、Design。"}
-            label={resource === "projects" ? "技术栈" : "标签"}
+            help="添加技术栈，例如 Go、React、SQLite。"
+            label="技术栈"
             onChange={(value) => update("terms", value)}
             value={form.terms}
           />
@@ -851,6 +904,36 @@ function formattedPeriodFromParts(parts: PeriodParts) {
 function displayMonth(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})$/);
   return match ? `${match[1]}.${match[2]}` : "";
+}
+
+function WritingSummaryField({
+  busy,
+  onChange,
+  onGenerate,
+  value,
+}: {
+  busy: boolean;
+  onChange: (value: string) => void;
+  onGenerate: () => void;
+  value: string;
+}) {
+  const id = "writing-summary";
+  return (
+    <div className={styles.field}>
+      <div className={styles.labelRow}>
+        <label htmlFor={id}>摘要</label>
+        <span className={styles.editorMeta}>
+          <span>根据标题、正文和 Tags 生成，可继续人工修改</span>
+          <button className={styles.inlineToolButton} disabled={busy} onClick={onGenerate} type="button">
+            <Sparkles aria-hidden="true" size={15} />
+            {busy ? "生成中..." : "AI 生成摘要"}
+          </button>
+        </span>
+      </div>
+      <textarea id={id} onChange={(event) => onChange(event.target.value)} value={value} />
+      <p className={styles.fieldHelp}>生成内容只会填入摘要草稿，确认无误后再保存文章。</p>
+    </div>
+  );
 }
 
 function Field({

@@ -78,6 +78,40 @@ func TestGenerateProjectUsesDeepSeekJSONResponse(t *testing.T) {
 	}
 }
 
+func TestGenerateWritingExcerptUsesDeepSeekJSONResponse(t *testing.T) {
+	service := NewService(Config{
+		Provider: "deepseek",
+		APIKey:   "test-key",
+		Timeout:  time.Second,
+		Client: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			text := string(body)
+			if !strings.Contains(text, "Generate a concise Chinese excerpt") {
+				t.Fatalf("request body missing excerpt prompt: %s", text)
+			}
+			if !strings.Contains(text, "AI") || !strings.Contains(text, "工程") {
+				t.Fatalf("request body missing tags: %s", text)
+			}
+			return jsonResponse(`{"excerpt":"  这是一段适合文章卡片展示的 AI 摘要。  "}`), nil
+		}),
+	})
+
+	generated, err := service.GenerateWritingExcerpt(t.Context(), WritingExcerptSource{
+		Title:     "中文文章",
+		ContentMD: "# 正文\n这里是文章内容。",
+		Tags:      []string{"AI", "工程"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateWritingExcerpt: %v", err)
+	}
+	if generated.Excerpt != "这是一段适合文章卡片展示的 AI 摘要。" {
+		t.Fatalf("generated = %+v", generated)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) Do(req *http.Request) (*http.Response, error) {

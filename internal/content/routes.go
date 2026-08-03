@@ -34,6 +34,7 @@ func RegisterAdminRoutes(r chi.Router, repo *Repository, generators ...ContentTr
 
 	r.Get("/api/admin/writing", listHandler(repo.ListWriting))
 	r.Post("/api/admin/writing", createHandler(repo.CreateWriting))
+	r.Post("/api/admin/writing/excerpt/generate", generateWritingExcerptHandler(generator))
 	r.Get("/api/admin/writing/{id}", getHandler(repo.GetWritingAdmin))
 	r.Put("/api/admin/writing/{id}", updateWritingHandler(repo))
 	r.Put("/api/admin/writing/{id}/translations/{locale}", saveWritingTranslationHandler(repo))
@@ -108,6 +109,9 @@ func RegisterSiteRoutes(r chi.Router, repo *Repository) {
 		item, meta, alternates, err := repo.PublicWritingByLocaleSlug(req.Context(), locale, chi.URLParam(req, "slug"))
 		writeResult(w, LocalizedDetailResponse[Writing]{LocaleMeta: meta, Item: item, Alternates: alternates}, err)
 	})
+	r.Get("/api/site/writing/{slug}/engagement", writingEngagementHandler(repo))
+	r.Post("/api/site/writing/{slug}/like", likeWritingHandler(repo))
+	r.Post("/api/site/writing/{slug}/comments", createWritingCommentHandler(repo))
 	r.Get("/api/site/talks", func(w http.ResponseWriter, req *http.Request) {
 		locale := i18n.CoerceLocale(req.URL.Query().Get("locale"))
 		items, meta, err := repo.PublicTalksByLocale(req.Context(), locale, limitFromRequest(req))
@@ -194,6 +198,56 @@ func updateExperienceHandler(repo *Repository) http.HandlerFunc {
 		experience, err := repo.UpdateExperience(req.Context(), id, input)
 		writeResult(w, experience, err)
 	}
+}
+
+func writingEngagementHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		writing, ok := publicWritingFromRequest(w, req, repo)
+		if !ok {
+			return
+		}
+		engagement, err := repo.WritingEngagement(req.Context(), writing.ID)
+		writeResult(w, engagement, err)
+	}
+}
+
+func likeWritingHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		writing, ok := publicWritingFromRequest(w, req, repo)
+		if !ok {
+			return
+		}
+		likeCount, err := repo.LikeWriting(req.Context(), writing.ID)
+		writeResult(w, struct {
+			LikeCount int `json:"like_count"`
+		}{LikeCount: likeCount}, err)
+	}
+}
+
+func createWritingCommentHandler(repo *Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		writing, ok := publicWritingFromRequest(w, req, repo)
+		if !ok {
+			return
+		}
+		var input WritingCommentInput
+		if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
+			httpserver.WriteError(w, http.StatusBadRequest, "validation_error", "Invalid request payload", nil)
+			return
+		}
+		comment, err := repo.CreateWritingComment(req.Context(), writing.ID, input)
+		writeCreated(w, comment, err)
+	}
+}
+
+func publicWritingFromRequest(w http.ResponseWriter, req *http.Request, repo *Repository) (Writing, bool) {
+	locale := i18n.CoerceLocale(req.URL.Query().Get("locale"))
+	writing, _, _, err := repo.PublicWritingByLocaleSlug(req.Context(), locale, chi.URLParam(req, "slug"))
+	if err != nil {
+		writeError(w, err)
+		return Writing{}, false
+	}
+	return writing, true
 }
 
 func deleteProjectHandler(repo *Repository) http.HandlerFunc {
@@ -283,7 +337,7 @@ func writeError(w http.ResponseWriter, err error) {
 		httpserver.WriteError(w, http.StatusNotFound, "not_found", "Content not found", nil)
 	case errors.Is(err, ErrImmutableSlug), errors.Is(err, ErrDeleteBlocked), errors.Is(err, ErrSlugConflict):
 		httpserver.WriteError(w, http.StatusConflict, "conflict", err.Error(), nil)
-	case errors.Is(err, ErrInvalidReorder), errors.Is(err, ErrInvalidStatus), errors.Is(err, ErrEmptySlug), errors.Is(err, ErrReservedSlug), errors.Is(err, ErrSlugTooLong), errors.Is(err, ErrUnsafeMarkdownMedia):
+	case errors.Is(err, ErrInvalidReorder), errors.Is(err, ErrInvalidStatus), errors.Is(err, ErrEmptySlug), errors.Is(err, ErrReservedSlug), errors.Is(err, ErrSlugTooLong), errors.Is(err, ErrUnsafeMarkdownMedia), errors.Is(err, ErrInvalidComment):
 		httpserver.WriteError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "internal_error", "Content operation failed", nil)

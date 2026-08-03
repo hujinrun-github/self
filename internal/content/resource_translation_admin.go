@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,6 +20,7 @@ import (
 type ContentTranslationGenerator interface {
 	GenerateProject(ctx context.Context, source translation.ProjectTranslationSource, locale i18n.Locale) (translation.GeneratedProjectTranslation, error)
 	GenerateWriting(ctx context.Context, source translation.WritingTranslationSource, locale i18n.Locale) (translation.GeneratedWritingTranslation, error)
+	GenerateWritingExcerpt(ctx context.Context, source translation.WritingExcerptSource) (translation.GeneratedWritingExcerpt, error)
 	GenerateTalk(ctx context.Context, source translation.TalkTranslationSource, locale i18n.Locale) (translation.GeneratedTalkTranslation, error)
 	GenerateExperience(ctx context.Context, source translation.ExperienceTranslationSource, locale i18n.Locale) (translation.GeneratedExperienceTranslation, error)
 }
@@ -305,6 +307,46 @@ func generateWritingTranslationHandler(repo *Repository, generator ContentTransl
 		err = repo.SaveGeneratedWritingTranslation(req.Context(), id, locale, start, generated)
 		writeTranslationResult(w, err, "Could not generate writing translation")
 	}
+}
+
+func generateWritingExcerptHandler(generator ContentTranslationGenerator) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if generator == nil {
+			writeTranslationError(w, translation.ErrProviderUnavailable, "Could not generate writing excerpt")
+			return
+		}
+
+		var source translation.WritingExcerptSource
+		if err := json.NewDecoder(req.Body).Decode(&source); err != nil {
+			httpserver.WriteError(w, http.StatusBadRequest, "validation_error", "Invalid writing excerpt payload", nil)
+			return
+		}
+		source = normalizeWritingExcerptSource(source)
+		if source.Title == "" && source.ContentMD == "" {
+			httpserver.WriteError(w, http.StatusBadRequest, "validation_error", "Writing title or markdown body is required", nil)
+			return
+		}
+
+		generated, err := generator.GenerateWritingExcerpt(req.Context(), source)
+		if err != nil {
+			writeTranslationError(w, err, "Could not generate writing excerpt")
+			return
+		}
+		writeResult(w, generated, nil)
+	}
+}
+
+func normalizeWritingExcerptSource(source translation.WritingExcerptSource) translation.WritingExcerptSource {
+	source.Title = strings.TrimSpace(source.Title)
+	source.ContentMD = strings.TrimSpace(source.ContentMD)
+	tags := make([]string, 0, len(source.Tags))
+	for _, tag := range source.Tags {
+		if normalized := strings.TrimSpace(tag); normalized != "" {
+			tags = append(tags, normalized)
+		}
+	}
+	source.Tags = tags
+	return source
 }
 
 func (r *Repository) SaveTalkTranslation(ctx context.Context, talkID int64, locale i18n.Locale, input TalkTranslationInput, ifMatch string, ifNoneMatch string) error {

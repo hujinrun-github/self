@@ -82,6 +82,16 @@ type GeneratedWritingTranslation struct {
 	SEODescription string
 }
 
+type WritingExcerptSource struct {
+	Title     string   `json:"title"`
+	ContentMD string   `json:"content_md"`
+	Tags      []string `json:"tags"`
+}
+
+type GeneratedWritingExcerpt struct {
+	Excerpt string `json:"excerpt"`
+}
+
 type TalkTranslationSource struct {
 	Title          string
 	SourceSlug     string
@@ -191,6 +201,18 @@ func (s *Service) GenerateWriting(ctx context.Context, source WritingTranslation
 		return s.generateWritingDeepSeek(ctx, source, locale)
 	default:
 		return GeneratedWritingTranslation{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, s.cfg.Provider)
+	}
+}
+
+func (s *Service) GenerateWritingExcerpt(ctx context.Context, source WritingExcerptSource) (GeneratedWritingExcerpt, error) {
+	if !s.isConfigured() {
+		return GeneratedWritingExcerpt{}, ErrProviderUnavailable
+	}
+	switch s.cfg.Provider {
+	case "deepseek":
+		return s.generateWritingExcerptDeepSeek(ctx, source)
+	default:
+		return GeneratedWritingExcerpt{}, fmt.Errorf("%w: %s", ErrProviderUnavailable, s.cfg.Provider)
 	}
 }
 

@@ -7,12 +7,21 @@ import type { MediaMap, MediaVariant } from "../../lib/types";
 import styles from "./MarkdownView.module.css";
 
 type MarkdownViewProps = {
+  headingIDs?: string[];
   markdown: string;
   media: MediaMap;
 };
 
-export function MarkdownView({ markdown, media }: MarkdownViewProps) {
-  const { safeMarkdown, variantsByURL } = rewriteMediaReferences(markdown, media);
+export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps) {
+  const { safeMarkdown, variantsByURL } = rewriteMediaReferences(
+    normalizeLooseImageReferences(markdown),
+    media,
+  );
+  let headingIDIndex = 0;
+
+  function nextHeadingID() {
+    return headingIDs?.[headingIDIndex++];
+  }
 
   const components: Components = {
     a({ href, children }) {
@@ -34,6 +43,18 @@ export function MarkdownView({ markdown, media }: MarkdownViewProps) {
     },
     img({ src, alt }) {
       const variant = src ? variantsByURL[src] : undefined;
+      if (!variant && isSafeRemoteImage(src)) {
+        return (
+          <img
+            alt={alt ?? ""}
+            className={styles.image}
+            decoding="async"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={src}
+          />
+        );
+      }
       if (!variant) {
         return null;
       }
@@ -48,6 +69,15 @@ export function MarkdownView({ markdown, media }: MarkdownViewProps) {
           width={variant.width}
         />
       );
+    },
+    h1({ children }) {
+      return <h1 id={nextHeadingID()}>{children}</h1>;
+    },
+    h2({ children }) {
+      return <h2 id={nextHeadingID()}>{children}</h2>;
+    },
+    h3({ children }) {
+      return <h3 id={nextHeadingID()}>{children}</h3>;
     },
   };
 
@@ -89,4 +119,15 @@ function rewriteMediaReferences(markdown: string, media: MediaMap) {
     },
   );
   return { safeMarkdown, variantsByURL };
+}
+
+function normalizeLooseImageReferences(markdown: string) {
+  return markdown.replace(
+    /!\[([^\]\r\n]*)\][ \t]*(?:\r?\n[ \t]*)+\((https:\/\/[^\s)]+|media:\/\/asset\/\d+\/[a-zA-Z0-9_-]+)\)/g,
+    "![$1]($2)",
+  );
+}
+
+function isSafeRemoteImage(src: string | undefined) {
+  return Boolean(src?.trim().toLowerCase().startsWith("https://"));
 }
