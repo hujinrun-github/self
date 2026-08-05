@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
@@ -113,9 +113,84 @@ wait_for_health() {
   return 1
 }
 
+compose_up_current_release() {
+  local wait_supported="$1"
+  local host_port="$2"
+
+  if [[ "$wait_supported" -eq 1 ]]; then
+    run_logged docker compose up -d --remove-orphans --wait
+    return 0
+  fi
+
+  run_logged docker compose up -d --remove-orphans
+  wait_for_health "$host_port"
+}
+
+compose_up_rollback_release() {
+  local wait_supported="$1"
+  local host_port="$2"
+
+  if [[ "$wait_supported" -eq 1 ]]; then
+    run_logged docker compose up -d --no-build --force-recreate --wait portfolio-app
+    return 0
+  fi
+
+  run_logged docker compose up -d --no-build --force-recreate portfolio-app
+  wait_for_health "$host_port"
+}
+
+capture_rollback_image() {
+  if is_true "${DRY_RUN:-0}"; then
+    return 0
+  fi
+  docker inspect -f '{{.Image}}' portfolio-app 2>/dev/null || true
+}
+
+capture_rollback_image_tag() {
+  if is_true "${DRY_RUN:-0}"; then
+    return 0
+  fi
+  docker inspect -f '{{.Config.Image}}' portfolio-app 2>/dev/null || true
+}
+
+restore_env_backup() {
+  local env_backup="$1"
+
+  if [[ -f "$env_backup" ]]; then
+    cp "$env_backup" ".env"
+  fi
+}
+
+rollback_to_previous_service() {
+  local rollback_image="$1"
+  local rollback_tag="$2"
+  local env_backup="$3"
+  local wait_supported="$4"
+  local host_port="$5"
+
+  echo "deploy cutover failed; attempting to keep the previous portfolio-app version online" >&2
+  restore_env_backup "$env_backup"
+
+  if [[ -z "$rollback_image" || -z "$rollback_tag" ]]; then
+    echo "previous portfolio-app image was not captured; cannot perform image rollback" >&2
+    return 0
+  fi
+
+  if is_true "${DRY_RUN:-0}"; then
+    trace_command "docker tag $rollback_image $rollback_tag"
+    trace_command "docker compose rm -sf portfolio-app"
+  else
+    docker tag "$rollback_image" "$rollback_tag"
+    docker compose rm -sf portfolio-app >/dev/null 2>&1 || true
+  fi
+
+  compose_up_rollback_release "$wait_supported" "$host_port"
+}
+
 main() {
   local app_dir="${PORTFOLIO_APP_DIR:-$PWD}"
   local state_file fingerprint_file current_fingerprint="" target_fingerprint release_override release_type wait_supported=0 host_port
+  local env_backup="" rollback_image="" rollback_tag="" rollback_on_error=0
 
   require_env_value GITHUB_SHA
 
@@ -143,24 +218,30 @@ main() {
   fi
 
   mkdir -p runtime/uploads runtime/private_uploads runtime/backups
+  env_backup="runtime/.env.before-${GITHUB_SHA}"
+  if [[ -f ".env" ]]; then
+    cp ".env" "$env_backup"
+  else
+    rm -f "$env_backup"
+  fi
   render_env_file ".env"
   run_minio_preflight_if_needed
 
   if [[ "$release_type" == "migration" ]]; then
-    run_logged docker compose stop portfolio-app
     run_schema_backup "runtime/backups" "$GITHUB_SHA"
     run_full_backup "runtime/backups" "$GITHUB_SHA"
   fi
 
   run_quiet_logged docker compose config
+  rollback_image="$(capture_rollback_image)"
+  rollback_tag="$(capture_rollback_image_tag)"
   run_logged docker compose build
 
-  if [[ "$wait_supported" -eq 1 ]]; then
-    run_logged docker compose up -d --remove-orphans --wait
-  else
-    run_logged docker compose up -d --remove-orphans
-    wait_for_health "$host_port"
-  fi
+  trap 'status=$?; trap - ERR; if [[ "$rollback_on_error" -eq 1 ]]; then rollback_to_previous_service "$rollback_image" "$rollback_tag" "$env_backup" "$wait_supported" "$host_port" || true; fi; exit "$status"' ERR
+  rollback_on_error=1
+  compose_up_current_release "$wait_supported" "$host_port"
+  rollback_on_error=0
+  trap - ERR
 
   run_logged docker compose ps
   run_logged docker compose logs --tail=100 portfolio-app
