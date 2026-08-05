@@ -74,7 +74,7 @@ func TestRedirectsLegacyAndUnsupportedLocalePathsToZh(t *testing.T) {
 	}
 }
 
-func TestProductionCSPDisallowsDataImages(t *testing.T) {
+func TestProductionCSPAllowsHTTPSImagesButDisallowsDataImages(t *testing.T) {
 	handler := SecurityHeaders(true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -85,8 +85,8 @@ func TestProductionCSPDisallowsDataImages(t *testing.T) {
 	if csp == "" {
 		t.Fatal("missing Content-Security-Policy")
 	}
-	if !containsDirective(csp, "img-src 'self';") {
-		t.Fatalf("CSP missing strict img-src directive: %s", csp)
+	if !containsDirective(csp, "img-src 'self' https:;") {
+		t.Fatalf("CSP missing HTTPS image directive: %s", csp)
 	}
 	if containsDirective(csp, "data:") {
 		t.Fatalf("CSP should not allow data: %s", csp)
