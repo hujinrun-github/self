@@ -153,15 +153,16 @@ The remote deploy script renders these `PORTFOLIO_*` values into the runtime `.e
 
 ### Release Types
 
-- `app-only`: use this when `internal/db/migrations/*.sql` did not change. The deploy script skips the maintenance window and database backup steps.
-- `migration`: use this when migration files changed, or when the production host has no recorded migration fingerprint yet. The deploy script stops `portfolio-app`, writes schema and full `pg_dump` backups into `runtime/backups`, and then continues the rollout.
+- `app-only`: use this when `internal/db/migrations/*.sql` did not change. The deploy script skips the database backup steps.
+- `migration`: use this when migration files changed, or when the production host has no recorded migration fingerprint yet. The deploy script keeps the current `portfolio-app` container running while it writes schema and full `pg_dump` backups into `runtime/backups`, validates the compose file, and builds the new image. It only cuts over after those preflight steps succeed.
 - `auto`: the default. The remote deploy script compares the last recorded migration fingerprint with the uploaded source bundle; if migration files changed, it upgrades the release to `migration`.
 
 Treat the first production rollout as `migration`, even when using `workflow_dispatch`, so the host captures a known-good backup baseline.
 
-### Maintenance Window And Backup Expectations
+### Online Deploy And Backup Expectations
 
-- `migration` releases intentionally freeze writes by stopping `portfolio-app` before the backup starts.
+- Failed preflight, backup, or image build steps must not stop the currently running production container; the old version continues serving traffic.
+- During cutover, the script captures the currently running image and previous `.env`. If `docker compose up` or the health check fails, it attempts to retag the previous image, restore the previous `.env`, and recreate `portfolio-app` with `--no-build`.
 - The script expects either `pg_dump` on the remote host or a working Docker fallback so it can emit both schema-only and full PostgreSQL backups.
 - `MEDIA_BLOB_BACKEND=hybrid` triggers a MinIO preflight before the new container is started. If the bucket check fails, the deployment stops before the app comes back up.
 
@@ -171,5 +172,5 @@ Use a strong one-time `ADMIN_PASSWORD` for bootstrap. After the first admin row 
 
 ### Rollback Paths
 
-1. Rollback path A: use this for `app-only` releases or backward-compatible schema changes. Check out the last known-good commit on the server, rebuild, and rerun the deploy workflow.
-2. Rollback path B: use this for incompatible migration failures. Keep the app stopped, prefer a forward fix if possible, and restore from the latest `runtime/backups/*-schema.sql` or `runtime/backups/*-full.dump` only when a database rollback is truly required.
+1. Rollback path A: use this for `app-only` releases or backward-compatible schema changes. The deploy script first attempts to bring the previous image back automatically when cutover fails; if manual action is still needed, check out the last known-good commit on the server, rebuild, and rerun the deploy workflow.
+2. Rollback path B: use this for incompatible migration failures. Prefer a forward fix if possible, and restore from the latest `runtime/backups/*-schema.sql` or `runtime/backups/*-full.dump` only when a database rollback is truly required.

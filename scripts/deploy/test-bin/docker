@@ -6,6 +6,22 @@ if [[ -n "${TRACE_FILE:-}" ]]; then
   printf 'docker %s\n' "$*" >>"$TRACE_FILE"
 fi
 
+if [[ -n "${MOCK_DOCKER_FAIL_MATCH:-}" && "$*" == *"${MOCK_DOCKER_FAIL_MATCH}"* ]]; then
+  exit "${MOCK_DOCKER_FAIL_EXIT:-1}"
+fi
+
+if [[ "${1:-}" == "inspect" && "${2:-}" == "-f" ]]; then
+  case "${3:-}" in
+    "{{.Image}}")
+      printf '%s\n' "${MOCK_DOCKER_INSPECT_IMAGE:-sha256:previous-image}"
+      ;;
+    "{{.Config.Image}}")
+      printf '%s\n' "${MOCK_DOCKER_INSPECT_CONFIG_IMAGE:-self-portfolio-app:latest}"
+      ;;
+  esac
+  exit 0
+fi
+
 if [[ "${1:-}" == "compose" && "${2:-}" == "up" && "${3:-}" == "--help" ]]; then
   printf '%s\n' "${MOCK_DOCKER_HELP:-Usage: docker compose up --wait}"
   exit 0

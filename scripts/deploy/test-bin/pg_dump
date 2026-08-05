@@ -6,4 +6,4 @@ if [[ -n "${TRACE_FILE:-}" ]]; then
   printf 'pg_dump %s\n' "$*" >>"$TRACE_FILE"
 fi
 
-exit 0
+exit "${MOCK_PG_DUMP_EXIT:-0}"

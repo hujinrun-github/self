@@ -39,7 +39,7 @@ run_remote_deploy() {
     TRACE_FILE="$trace_file" \
     GITHUB_SHA="deadbeef" \
     RELEASE_TYPE="${RELEASE_TYPE:-migration}" \
-    DRY_RUN=1 \
+    DRY_RUN="${DRY_RUN:-1}" \
     PORTFOLIO_APP_ORIGIN="https://portfolio.example.com" \
     PORTFOLIO_APP_ORIGINS="https://portfolio.example.com" \
     PORTFOLIO_PUBLIC_BASE_URL="https://portfolio.example.com" \
@@ -65,40 +65,102 @@ run_remote_deploy() {
     PORTFOLIO_PORT_HOST="4300" \
     MOCK_DOCKER_HELP="${MOCK_DOCKER_HELP:---wait}" \
     MOCK_DOCKER_PS="${MOCK_DOCKER_PS:-}" \
+    MOCK_DOCKER_FAIL_MATCH="${MOCK_DOCKER_FAIL_MATCH:-}" \
+    MOCK_DOCKER_FAIL_EXIT="${MOCK_DOCKER_FAIL_EXIT:-1}" \
+    MOCK_DOCKER_INSPECT_IMAGE="${MOCK_DOCKER_INSPECT_IMAGE:-sha256:previous-image}" \
+    MOCK_DOCKER_INSPECT_CONFIG_IMAGE="${MOCK_DOCKER_INSPECT_CONFIG_IMAGE:-self-portfolio-app:latest}" \
+    MOCK_PG_DUMP_EXIT="${MOCK_PG_DUMP_EXIT:-0}" \
     MOCK_SS_OUTPUT="${MOCK_SS_OUTPUT:-}" \
     MOCK_GIT_HEAD="${MOCK_GIT_HEAD:-current-sha}" \
       bash "$SCRIPT_DIR/remote-deploy.sh"
   )
 }
 
-test_migration_release_stops_before_backup_and_deploy() {
-  local app_dir trace_file stop_line schema_line full_line config_line build_line up_line
+test_migration_release_keeps_old_service_until_cutover() {
+  local app_dir trace_file schema_line full_line config_line build_line up_line
   app_dir="$(mktemp -d)"
   trace_file="$(mktemp)"
 
   run_remote_deploy "$app_dir" "$trace_file"
 
-  assert_trace_contains "$trace_file" "docker compose stop portfolio-app"
   assert_trace_contains "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio --schema-only"
   assert_trace_contains "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio -Fc"
   assert_trace_contains "$trace_file" "docker compose config"
   assert_trace_contains "$trace_file" "docker compose build"
   assert_trace_contains "$trace_file" "docker compose up -d --remove-orphans --wait"
+  if grep -Fq "docker compose stop portfolio-app" "$trace_file"; then
+    fail "migration release should not stop the old service before backup/build succeeds"
+  fi
 
-  stop_line="$(line_number "$trace_file" "docker compose stop portfolio-app")"
   schema_line="$(line_number "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio --schema-only")"
   full_line="$(line_number "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio -Fc")"
   config_line="$(line_number "$trace_file" "docker compose config")"
   build_line="$(line_number "$trace_file" "docker compose build")"
   up_line="$(line_number "$trace_file" "docker compose up -d --remove-orphans --wait")"
 
-  [[ "$stop_line" -lt "$schema_line" ]] || fail "expected stop before schema backup"
   [[ "$schema_line" -lt "$full_line" ]] || fail "expected schema backup before full backup"
   [[ "$full_line" -lt "$config_line" ]] || fail "expected backups before compose config"
   [[ "$config_line" -lt "$build_line" ]] || fail "expected config before build"
   [[ "$build_line" -lt "$up_line" ]] || fail "expected build before up"
 
   grep -F "DATABASE_URL=postgres://portfolio_app:secret@host.docker.internal:19588/portfolio?sslmode=disable" "$app_dir/.env" >/dev/null || fail "expected .env to be rendered with a container-reachable database host"
+}
+
+test_backup_failure_exits_before_build_or_cutover() {
+  local app_dir trace_file output
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+
+  if output="$(DRY_RUN=0 MOCK_PG_DUMP_EXIT=1 run_remote_deploy "$app_dir" "$trace_file" 2>&1)"; then
+    fail "expected backup failure to stop deploy"
+  fi
+
+  assert_trace_contains "$trace_file" "pg_dump -h 127.0.0.1 -p 19588 -U portfolio_app -d portfolio --schema-only"
+  if grep -Fq "docker compose stop portfolio-app" "$trace_file"; then
+    fail "backup failure should not stop the old service"
+  fi
+  if grep -Fq "docker compose build" "$trace_file"; then
+    fail "backup failure should not build a new image"
+  fi
+  if grep -Fq "docker compose up -d" "$trace_file"; then
+    fail "backup failure should not cut over containers"
+  fi
+  [[ "$output" != *"Container portfolio-app Stopping"* ]] || fail "backup failure output should not stop service"
+}
+
+test_cutover_failure_rolls_back_previous_image() {
+  local app_dir trace_file output build_line up_line tag_line rollback_rm_line rollback_up_line
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+  mkdir -p "$app_dir/runtime"
+  printf 'OLD_ENV=1\n' > "$app_dir/.env"
+
+  if output="$(
+    DRY_RUN=0 \
+    MOCK_DOCKER_FAIL_MATCH="compose up -d --remove-orphans --wait" \
+      run_remote_deploy "$app_dir" "$trace_file" 2>&1
+  )"; then
+    fail "expected cutover failure to fail deploy after rollback attempt"
+  fi
+
+  assert_trace_contains "$trace_file" "docker compose build"
+  assert_trace_contains "$trace_file" "docker compose up -d --remove-orphans --wait"
+  assert_trace_contains "$trace_file" "docker tag"
+  assert_trace_contains "$trace_file" "docker compose rm -sf portfolio-app"
+  assert_trace_contains "$trace_file" "docker compose up -d --no-build --force-recreate --wait portfolio-app"
+  [[ "$output" == *"attempting to keep the previous portfolio-app version online"* ]] || fail "rollback output should explain the fallback"
+
+  build_line="$(line_number "$trace_file" "docker compose build")"
+  up_line="$(line_number "$trace_file" "docker compose up -d --remove-orphans --wait")"
+  tag_line="$(line_number "$trace_file" "docker tag")"
+  rollback_rm_line="$(line_number "$trace_file" "docker compose rm -sf portfolio-app")"
+  rollback_up_line="$(line_number "$trace_file" "docker compose up -d --no-build --force-recreate --wait portfolio-app")"
+
+  [[ "$build_line" -lt "$up_line" ]] || fail "expected build before cutover"
+  [[ "$up_line" -lt "$tag_line" ]] || fail "expected rollback tag after failed cutover"
+  [[ "$tag_line" -lt "$rollback_rm_line" ]] || fail "expected rollback tag before removing failed container"
+  [[ "$rollback_rm_line" -lt "$rollback_up_line" ]] || fail "expected rollback recreate after removing failed container"
+  grep -F "OLD_ENV=1" "$app_dir/.env" >/dev/null || fail "rollback should restore previous .env"
 }
 
 test_app_only_release_skips_backup_and_stop() {
@@ -179,7 +241,9 @@ test_missing_app_dir_fails_clearly() {
 }
 
 main() {
-  test_migration_release_stops_before_backup_and_deploy
+  test_migration_release_keeps_old_service_until_cutover
+  test_backup_failure_exits_before_build_or_cutover
+  test_cutover_failure_rolls_back_previous_image
   test_app_only_release_skips_backup_and_stop
   test_wait_fallback_polls_health_when_wait_not_supported
   test_dry_run_prints_planned_steps
