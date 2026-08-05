@@ -24,7 +24,7 @@ func productionCSP() string {
 		"default-src 'self';",
 		"script-src 'self';",
 		"style-src 'self';",
-		"img-src 'self';",
+		"img-src 'self' https:;",
 		"font-src 'self';",
 		"connect-src 'self';",
 		"frame-ancestors 'none';",
