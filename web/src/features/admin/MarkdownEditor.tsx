@@ -5,6 +5,7 @@ import type { ICommand } from "@uiw/react-md-editor/nohighlight";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "@uiw/react-markdown-preview/markdown.css";
 
+import { rewriteRemoteImageURLs } from "../../lib/media";
 import styles from "./Admin.module.css";
 
 const MDEditor = lazy(() => import("@uiw/react-md-editor/nohighlight"));
@@ -131,7 +132,7 @@ function hideNativeFullscreen(command: ICommand): false | ICommand {
 }
 
 function markdownPreviewSource(source: string) {
-  return normalizeLooseImageReferences(source).replace(
+  return rewriteRemoteImageURLs(normalizeLooseImageReferences(source)).replace(
     /media:\/\/asset\/(\d+)\/([a-zA-Z0-9_-]+)/g,
     "/media/$1/$2",
   );

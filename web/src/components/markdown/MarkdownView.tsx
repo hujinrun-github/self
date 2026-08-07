@@ -2,7 +2,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { isSafeLink, resolveMediaURL } from "../../lib/media";
+import { isSafeLink, resolveMediaURL, resolveRemoteImageURL } from "../../lib/media";
 import type { MediaMap, MediaVariant } from "../../lib/types";
 import styles from "./MarkdownView.module.css";
 
@@ -43,7 +43,8 @@ export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps)
     },
     img({ src, alt }) {
       const variant = src ? variantsByURL[src] : undefined;
-      if (!variant && isSafeRemoteImage(src)) {
+      const remoteSrc = resolveRemoteImageURL(src);
+      if (!variant && isSafeRemoteImage(remoteSrc)) {
         return (
           <img
             alt={alt ?? ""}
@@ -51,7 +52,7 @@ export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps)
             decoding="async"
             loading="lazy"
             referrerPolicy="no-referrer"
-            src={src}
+            src={remoteSrc}
           />
         );
       }

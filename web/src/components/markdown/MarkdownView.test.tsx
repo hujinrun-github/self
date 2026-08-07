@@ -52,6 +52,19 @@ describe("MarkdownView", () => {
     expect(image).toHaveAttribute("referrerPolicy", "no-referrer");
   });
 
+  it("loads GitHub Raw images through the accessible CDN", () => {
+    renderWithApp(
+      <MarkdownView
+        markdown={"![remote](https://raw.githubusercontent.com/example/images/main/posts/a.png)"}
+        media={{}}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "remote" })).toHaveAttribute(
+      "src",
+      "https://cdn.jsdelivr.net/gh/example/images@main/posts/a.png",
+    );
+  });
+
   it("previews images when pasted markdown splits the label and url across lines", () => {
     renderWithApp(
       <MarkdownView markdown={"![remote]\n(https://example.com/a.png)"} media={{}} />,

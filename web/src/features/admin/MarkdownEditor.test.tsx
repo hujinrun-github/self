@@ -44,7 +44,7 @@ describe("MarkdownEditor", () => {
     const image = await screen.findByRole("img", { name: "cover.png" }, { timeout: 3000 });
     expect(image).toHaveAttribute(
       "src",
-      "https://raw.githubusercontent.com/hujinrun-github/blog_images/master/images/cover.png",
+      "https://cdn.jsdelivr.net/gh/hujinrun-github/blog_images@master/images/cover.png",
     );
   });
 
