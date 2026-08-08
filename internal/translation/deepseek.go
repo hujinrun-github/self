@@ -57,10 +57,9 @@ func (s *Service) generateProjectDeepSeek(ctx context.Context, source ProjectTra
 	generated.Summary = strings.TrimSpace(generated.Summary)
 	generated.SEOTitle = strings.TrimSpace(generated.SEOTitle)
 	generated.SEODescription = strings.TrimSpace(generated.SEODescription)
-	if strings.TrimSpace(generated.ContentMD) == "" {
-		generated.ContentMD = ""
-	}
-	if generated.Title == "" || generated.Slug == "" || generated.Summary == "" {
+	generated.ContentMD = strings.TrimSpace(generated.ContentMD)
+	if generated.Title == "" || generated.Slug == "" || generated.Summary == "" ||
+		(strings.TrimSpace(source.ContentMD) != "" && generated.ContentMD == "") {
 		return GeneratedProjectTranslation{}, ErrInvalidResponse
 	}
 	return generated, nil
@@ -111,10 +110,11 @@ func (s *Service) generateWritingDeepSeek(ctx context.Context, source WritingTra
 	generated.Excerpt = strings.TrimSpace(generated.Excerpt)
 	generated.SEOTitle = strings.TrimSpace(generated.SEOTitle)
 	generated.SEODescription = strings.TrimSpace(generated.SEODescription)
-	if strings.TrimSpace(generated.ContentMD) == "" {
-		generated.ContentMD = ""
-	}
+	generated.ContentMD = strings.TrimSpace(generated.ContentMD)
 	if generated.Title == "" || generated.Slug == "" || (strings.TrimSpace(source.Excerpt) != "" && generated.Excerpt == "") {
+		return GeneratedWritingTranslation{}, ErrInvalidResponse
+	}
+	if strings.TrimSpace(source.ContentMD) != "" && generated.ContentMD == "" {
 		return GeneratedWritingTranslation{}, ErrInvalidResponse
 	}
 	return generated, nil

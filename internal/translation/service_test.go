@@ -58,7 +58,7 @@ func TestGenerateProjectUsesDeepSeekJSONResponse(t *testing.T) {
 			if !strings.Contains(text, `"thinking":{"type":"disabled"}`) {
 				t.Fatalf("request body missing disabled thinking: %s", text)
 			}
-			return jsonResponse(`{"title":"English Title","slug":"english-title","summary":"Translated summary","content_md":"","seo_title":"SEO title","seo_description":"SEO description"}`), nil
+			return jsonResponse(`{"title":"English Title","slug":"english-title","summary":"Translated summary","content_md":"Translated body","seo_title":"SEO title","seo_description":"SEO description"}`), nil
 		}),
 	})
 
@@ -73,8 +73,41 @@ func TestGenerateProjectUsesDeepSeekJSONResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateProject: %v", err)
 	}
-	if generated.Title != "English Title" || generated.Slug != "english-title" || generated.Summary != "Translated summary" {
+	if generated.Title != "English Title" || generated.Slug != "english-title" || generated.Summary != "Translated summary" || generated.ContentMD != "Translated body" {
 		t.Fatalf("generated = %+v", generated)
+	}
+	if generated.SEOTitle != "SEO title" || generated.SEODescription != "SEO description" {
+		t.Fatalf("generated SEO fields = %+v", generated)
+	}
+}
+
+func TestGenerateProjectAndWritingRejectMissingTranslatedBodyForEveryLocale(t *testing.T) {
+	for _, locale := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleJA} {
+		t.Run(string(locale)+" project", func(t *testing.T) {
+			service := NewService(Config{
+				Provider: "deepseek", APIKey: "test-key", Timeout: time.Second,
+				Client: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+					return jsonResponse(`{"title":"Title","slug":"title","summary":"Summary","content_md":"","seo_title":"","seo_description":""}`), nil
+				}),
+			})
+			_, err := service.GenerateProject(t.Context(), ProjectTranslationSource{Title: "标题", Summary: "摘要", ContentMD: "正文"}, locale)
+			if !errors.Is(err, ErrInvalidResponse) {
+				t.Fatalf("GenerateProject(%s) err = %v, want ErrInvalidResponse", locale, err)
+			}
+		})
+
+		t.Run(string(locale)+" writing", func(t *testing.T) {
+			service := NewService(Config{
+				Provider: "deepseek", APIKey: "test-key", Timeout: time.Second,
+				Client: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+					return jsonResponse(`{"title":"Title","slug":"title","excerpt":"","content_md":"","seo_title":"","seo_description":""}`), nil
+				}),
+			})
+			_, err := service.GenerateWriting(t.Context(), WritingTranslationSource{Title: "标题", ContentMD: "正文"}, locale)
+			if !errors.Is(err, ErrInvalidResponse) {
+				t.Fatalf("GenerateWriting(%s) err = %v, want ErrInvalidResponse", locale, err)
+			}
+		})
 	}
 }
 

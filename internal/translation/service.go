@@ -47,39 +47,39 @@ type TranslationSnapshot struct {
 }
 
 type ProjectTranslationSource struct {
-	Title          string
-	SourceSlug     string
-	Summary        string
-	ContentMD      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	SourceSlug     string `json:"source_slug"`
+	Summary        string `json:"summary"`
+	ContentMD      string `json:"content_md"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type GeneratedProjectTranslation struct {
-	Title          string
-	Slug           string
-	Summary        string
-	ContentMD      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	Slug           string `json:"slug"`
+	Summary        string `json:"summary"`
+	ContentMD      string `json:"content_md"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type WritingTranslationSource struct {
-	Title          string
-	SourceSlug     string
-	Excerpt        string
-	ContentMD      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	SourceSlug     string `json:"source_slug"`
+	Excerpt        string `json:"excerpt"`
+	ContentMD      string `json:"content_md"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type GeneratedWritingTranslation struct {
-	Title          string
-	Slug           string
-	Excerpt        string
-	ContentMD      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	Slug           string `json:"slug"`
+	Excerpt        string `json:"excerpt"`
+	ContentMD      string `json:"content_md"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type WritingExcerptSource struct {
@@ -93,35 +93,35 @@ type GeneratedWritingExcerpt struct {
 }
 
 type TalkTranslationSource struct {
-	Title          string
-	SourceSlug     string
-	Summary        string
-	EventName      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	SourceSlug     string `json:"source_slug"`
+	Summary        string `json:"summary"`
+	EventName      string `json:"event_name"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type GeneratedTalkTranslation struct {
-	Title          string
-	Slug           string
-	Summary        string
-	EventName      string
-	SEOTitle       string
-	SEODescription string
+	Title          string `json:"title"`
+	Slug           string `json:"slug"`
+	Summary        string `json:"summary"`
+	EventName      string `json:"event_name"`
+	SEOTitle       string `json:"seo_title"`
+	SEODescription string `json:"seo_description"`
 }
 
 type ExperienceTranslationSource struct {
-	Period       string
-	Title        string
-	Organization string
-	Description  string
+	Period       string `json:"period"`
+	Title        string `json:"title"`
+	Organization string `json:"organization"`
+	Description  string `json:"description"`
 }
 
 type GeneratedExperienceTranslation struct {
-	Period       string
-	Title        string
-	Organization string
-	Description  string
+	Period       string `json:"period"`
+	Title        string `json:"title"`
+	Organization string `json:"organization"`
+	Description  string `json:"description"`
 }
 
 type ProfileSocialLinkTranslationSource struct {
@@ -137,22 +137,22 @@ type GeneratedProfileSocialLinkTranslation struct {
 }
 
 type ProfileTranslationSource struct {
-	Name           string
-	Headline       string
-	Summary        string
-	Bio            string
-	SEOTitle       string
-	SEODescription string
+	Name           string                               `json:"name"`
+	Headline       string                               `json:"headline"`
+	Summary        string                               `json:"summary"`
+	Bio            string                               `json:"bio"`
+	SEOTitle       string                               `json:"seo_title"`
+	SEODescription string                               `json:"seo_description"`
 	SocialLinks    []ProfileSocialLinkTranslationSource `json:"social_links"`
 }
 
 type GeneratedProfileTranslation struct {
-	Name           string
-	Headline       string
-	Summary        string
-	Bio            string
-	SEOTitle       string
-	SEODescription string
+	Name           string                                  `json:"name"`
+	Headline       string                                  `json:"headline"`
+	Summary        string                                  `json:"summary"`
+	Bio            string                                  `json:"bio"`
+	SEOTitle       string                                  `json:"seo_title"`
+	SEODescription string                                  `json:"seo_description"`
 	SocialLinks    []GeneratedProfileSocialLinkTranslation `json:"social_links"`
 }
 
