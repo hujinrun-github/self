@@ -1,0 +1,12 @@
+2026-08-08 01:08:16.046 CST [23632] LOG:  starting PostgreSQL 16.14 (Homebrew) on x86_64-apple-darwin23.6.0, compiled by Apple clang version 16.0.0 (clang-1600.0.26.6), 64-bit
+2026-08-08 01:08:16.049 CST [23632] LOG:  listening on IPv6 address "::1", port 5432
+2026-08-08 01:08:16.049 CST [23632] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2026-08-08 01:08:16.049 CST [23632] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2026-08-08 01:08:16.054 CST [23638] LOG:  database system was shut down at 2026-08-08 01:07:35 CST
+2026-08-08 01:08:16.059 CST [23632] LOG:  database system is ready to accept connections
+2026-08-08 01:08:16.170 CST [23647] FATAL:  database "tylerhu" does not exist
+2026-08-08 01:08:16.209 CST [23650] FATAL:  database "tylerhu" does not exist
+2026-08-08 01:13:16.198 CST [23636] LOG:  checkpoint starting: time
+2026-08-08 01:15:04.665 CST [23636] LOG:  checkpoint complete: wrote 1079 buffers (6.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=108.444 s, sync=0.021 s, total=108.468 s; sync files=465, longest=0.001 s, average=0.001 s; distance=5337 kB, estimate=5337 kB; lsn=0/1A540F8, redo lsn=0/1A540C0
+2026-08-08 03:31:59.715 CST [23636] LOG:  checkpoint starting: time
+2026-08-08 03:31:59.827 CST [23636] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.106 s, sync=0.001 s, total=0.113 s; sync files=2, longest=0.001 s, average=0.001 s; distance=3 kB, estimate=4804 kB; lsn=0/1A55080, redo lsn=0/1A55048

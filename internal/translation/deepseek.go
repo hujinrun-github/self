@@ -114,7 +114,7 @@ func (s *Service) generateWritingDeepSeek(ctx context.Context, source WritingTra
 	if strings.TrimSpace(generated.ContentMD) == "" {
 		generated.ContentMD = ""
 	}
-	if generated.Title == "" || generated.Slug == "" || generated.Excerpt == "" {
+	if generated.Title == "" || generated.Slug == "" || (strings.TrimSpace(source.Excerpt) != "" && generated.Excerpt == "") {
 		return GeneratedWritingTranslation{}, ErrInvalidResponse
 	}
 	return generated, nil
@@ -382,7 +382,7 @@ func normalizeGeneratedProfileSocialLinks(
 
 func writingSystemPrompt(locale i18n.Locale) string {
 	return fmt.Sprintf(
-		"Translate Chinese portfolio writing content into natural %s and return JSON only with keys title, slug, excerpt, content_md, seo_title, seo_description. Keep markdown structure in content_md. Slug must be lowercase ASCII romanized words separated by hyphens. Do not omit keys. If there is no long body, return content_md as an empty string.",
+		"Translate Chinese portfolio writing content into natural %s and return JSON only with keys title, slug, excerpt, content_md, seo_title, seo_description. Keep markdown structure in content_md. Slug must be lowercase ASCII romanized words separated by hyphens. Do not omit keys. Translate excerpt when the source excerpt is present; otherwise return excerpt as an empty string. If there is no long body, return content_md as an empty string.",
 		localeName(locale),
 	)
 }

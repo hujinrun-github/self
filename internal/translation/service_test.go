@@ -78,6 +78,55 @@ func TestGenerateProjectUsesDeepSeekJSONResponse(t *testing.T) {
 	}
 }
 
+func TestGenerateWritingAllowsEmptyExcerptWhenSourceExcerptIsEmpty(t *testing.T) {
+	service := NewService(Config{
+		Provider: "deepseek",
+		APIKey:   "test-key",
+		Timeout:  time.Second,
+		Client: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if !strings.Contains(string(body), "otherwise return excerpt as an empty string") {
+				t.Fatalf("request body missing optional excerpt instruction: %s", body)
+			}
+			return jsonResponse(`{"title":"English Title","slug":"english-title","excerpt":"","content_md":"Translated body","seo_title":"","seo_description":""}`), nil
+		}),
+	})
+
+	generated, err := service.GenerateWriting(t.Context(), WritingTranslationSource{
+		Title:     "中文标题",
+		ContentMD: "中文正文",
+	}, i18n.LocaleEN)
+	if err != nil {
+		t.Fatalf("GenerateWriting: %v", err)
+	}
+	if generated.Excerpt != "" {
+		t.Fatalf("generated excerpt = %q", generated.Excerpt)
+	}
+}
+
+func TestGenerateWritingRejectsEmptyExcerptWhenSourceExcerptExists(t *testing.T) {
+	service := NewService(Config{
+		Provider: "deepseek",
+		APIKey:   "test-key",
+		Timeout:  time.Second,
+		Client: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			return jsonResponse(`{"title":"English Title","slug":"english-title","excerpt":"","content_md":"Translated body","seo_title":"","seo_description":""}`), nil
+		}),
+	})
+
+	_, err := service.GenerateWriting(t.Context(), WritingTranslationSource{
+		Title:     "中文标题",
+		Excerpt:   "中文摘要",
+		ContentMD: "中文正文",
+	}, i18n.LocaleEN)
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("GenerateWriting err = %v, want ErrInvalidResponse", err)
+	}
+}
+
 func TestGenerateWritingExcerptUsesDeepSeekJSONResponse(t *testing.T) {
 	service := NewService(Config{
 		Provider: "deepseek",
