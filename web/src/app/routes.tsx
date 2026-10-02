@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, Outlet, redirect, useParams, type Loader
 import { AdminLayout } from "../features/admin/AdminLayout";
 import { ContentEditPage } from "../features/admin/ContentEditPage";
 import { ContentListPage } from "../features/admin/ContentListPage";
+import { EngagementPage } from "../features/admin/EngagementPage";
 import { MediaPage } from "../features/admin/MediaPage";
 import { ProfilePage } from "../features/admin/ProfilePage";
 import { LoginPage } from "../features/auth/LoginPage";
@@ -53,6 +54,7 @@ export const routes = [
       { element: <ContentListPage resource="experience" />, path: "experience" },
       { element: <ContentListPage resource="talks" />, path: "talks" },
       { element: <ContentListPage resource="writing" />, path: "writing" },
+      { element: <EngagementPage />, path: "engagement" },
       { element: <ContentListPage resource="projects" />, path: "projects" },
       { element: <ContentEditPage resource="experience" />, path: "experience/new" },
       { element: <ContentEditPage resource="experience" />, path: "experience/:id" },

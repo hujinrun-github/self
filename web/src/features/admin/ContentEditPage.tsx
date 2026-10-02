@@ -370,7 +370,7 @@ function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
   }
 
   return (
-    <form className={`${styles.panel} ${styles.stack}`} onSubmit={onSubmit}>
+    <form className={`${styles.panel} ${styles.stack} ${styles.contentForm}`} onSubmit={onSubmit}>
       <div className={styles.pageHeader}>
         <div>
           <Link className={styles.backLink} to={`/admin/${typedResource}`}>
@@ -480,6 +480,27 @@ function ContentEditForm({ id, resource }: { id?: string; resource: string }) {
           updateTitle={updateTitle}
         />
       )}
+      {!currentTranslation || isEditing ? (
+        <div className={styles.mobileFormActions}>
+          <span>{translationLocale ? adminLocaleRoleLabel(translationLocale) : form.publishNow ? "本次保存将公开发布" : "保存后可继续编辑"}</span>
+          {currentTranslation ? (
+            <button
+              className={`${styles.button} ${styles.primary}`}
+              disabled={saving}
+              onClick={() => translationLocale && void saveTranslation(translationLocale)}
+              type="button"
+            >
+              <Save aria-hidden="true" size={18} />
+              {saving ? "保存中..." : "保存当前译文"}
+            </button>
+          ) : (
+            <button className={`${styles.button} ${styles.primary}`} disabled={saving} type="submit">
+              <Save aria-hidden="true" size={18} />
+              {saving ? "保存中..." : form.publishNow ? "完成并发布" : "完成并保存草稿"}
+            </button>
+          )}
+        </div>
+      ) : null}
       {typedResource === "writing" ? (
         <WritingImportDialog
           mode="overwrite"

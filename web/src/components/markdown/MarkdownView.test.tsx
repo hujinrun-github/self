@@ -1,4 +1,5 @@
 import { cleanup, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { MediaMap } from "../../lib/types";
@@ -33,6 +34,21 @@ afterEach(() => {
 });
 
 describe("MarkdownView", () => {
+  it("keeps every heading target stable through StrictMode and repeated renders", () => {
+    const view = renderWithApp(<StrictMode><MarkdownView
+      headingIDs={["first", "second", "second-2"]}
+      markdown={"# First\n\n## Second\n\n### Second"}
+      media={{}}
+    /></StrictMode>);
+    expect(screen.getAllByRole("heading").map((heading) => heading.id)).toEqual(["first", "second", "second-2"]);
+    view.rerender(<StrictMode><MarkdownView
+      headingIDs={["updated", "last"]}
+      markdown={"## Updated\n\n## Last"}
+      media={{}}
+    /></StrictMode>);
+    expect(screen.getAllByRole("heading").map((heading) => heading.id)).toEqual(["updated", "last"]);
+  });
+
   it("does not render raw HTML", () => {
     renderWithApp(<MarkdownView markdown={"Hello <script>alert(1)</script>"} media={{}} />);
     expect(screen.queryByText("alert(1)")).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
-import { Eye, EyeOff, FileText, Image, Languages, LogIn, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, FileText, Image, Languages, LogIn } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch, APIRequestError, setCSRFToken } from "../../lib/api";
 import styles from "../admin/Admin.module.css";
@@ -10,10 +10,13 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setError("");
     try {
       await apiFetch("/api/admin/login", {
@@ -25,43 +28,48 @@ export function LoginPage() {
       navigate("/admin/profile");
     } catch (caught) {
       setError(caught instanceof APIRequestError ? caught.message : "登录失败");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <main className={styles.authShell} data-testid="admin-login-shell">
       <section className={styles.authIntro}>
-        <span className={styles.authBadge}>中文主语言后台</span>
+        <Link className={styles.authBrand} to="/zh">
+          <span aria-hidden="true" className={styles.brandMark}>研</span>
+          <span>作品集</span>
+        </Link>
         <h1 className={styles.authTitle}>
-          <span>先维护中文主内容，</span>
-          <span>再有序发布英日版本。</span>
+          <span>让每一次创作，</span>
+          <span>都有清晰的记录。</span>
         </h1>
         <p className={styles.authDescription}>
-          以中文主表为准，英日内容走生成、编辑、审核流程，发布前保留完整控制。
+          在这里整理作品、打磨文章，更新关于你的每一个细节。
         </p>
         <div className={styles.authFeatures}>
           <div className={styles.authFeature}>
             <FileText aria-hidden="true" className={styles.authFeatureIcon} size={20} />
-            <strong>资料与首页</strong>
-            <span>统一维护个人资料、联系方式与首页模块。</span>
+            <strong>作品与写作</strong>
+            <span>留住实践中的思考，让作品和文章有序呈现。</span>
           </div>
           <div className={styles.authFeature}>
             <Languages aria-hidden="true" className={styles.authFeatureIcon} size={20} />
-            <strong>辅助语言发布</strong>
-            <span>生成草稿后再审核，决定是否公开对应语言页面。</span>
+            <strong>多语言表达</strong>
+            <span>细心校对英文与日文版本，与更多读者交流。</span>
           </div>
           <div className={styles.authFeature}>
             <Image aria-hidden="true" className={styles.authFeatureIcon} size={20} />
-            <strong>媒体素材库</strong>
-            <span>图片素材一次上传，在项目、写作和资料页复用。</span>
+            <strong>资料与素材</strong>
+            <span>管理个人介绍与图片，让每个页面保持一致。</span>
           </div>
         </div>
       </section>
-      <form className={`${styles.panel} ${styles.stack} ${styles.authCard}`} data-testid="admin-login-card" onSubmit={onSubmit}>
+      <form aria-busy={isSubmitting} className={`${styles.panel} ${styles.stack} ${styles.authCard}`} data-testid="admin-login-card" onSubmit={onSubmit}>
         <div className={styles.authCardHeader}>
           <span className={styles.brandBadge}>内容管理台</span>
           <h2>后台登录</h2>
-          <p>使用管理员账号进入中文主语言工作区。</p>
+          <p>欢迎回来，继续你的创作。</p>
         </div>
         {error ? (
           <p aria-live="polite" className={styles.message}>
@@ -104,14 +112,14 @@ export function LoginPage() {
             </button>
           </div>
         </div>
-        <button className={`${styles.button} ${styles.primary}`} type="submit">
+        <button className={`${styles.button} ${styles.primary}`} disabled={isSubmitting} type="submit">
           <LogIn aria-hidden="true" size={18} />
-          登录
+          {isSubmitting ? "正在登录…" : "登录"}
         </button>
-        <div className={styles.authSecurityNote}>
-          <ShieldCheck aria-hidden="true" size={16} />
-          <span>管理员会话验证</span>
-        </div>
+        <Link className={styles.authBackLink} to="/zh">
+          <ArrowLeft aria-hidden="true" size={16} />
+          返回前台
+        </Link>
       </form>
     </main>
   );

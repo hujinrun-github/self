@@ -1,0 +1,657 @@
+{
+  "release_id": "portfolio-20261002-151738-af0d3fe8",
+  "source_fingerprint": "af0d3fe8b5383c545b1dc55af7f50e44f5051f1d38f4a105c5ac943fb3769d6d",
+  "git_head": "8e8e58e425fe919a21fbd97e2722bfbac7652e1d",
+  "artifacts": [
+    {
+      "path": "runtime/Dockerfile",
+      "sha256": "75dacb3a7a9bedaf3a30cdcd1d3cdbc6c422195c56b0fdb4adef7a3f61799c80",
+      "size": 335
+    },
+    {
+      "path": "runtime/server",
+      "sha256": "931377c9b439d3f14e113e73e634dba2715660098223dc55b356088bb1c00bd7",
+      "size": 20487237
+    },
+    {
+      "path": "runtime/web/dist/assets/RichEditor-B085XcuS.js",
+      "sha256": "f9c8dbd87dba2b3d3817d9b9088b24cdbc2ee9d38a43431ca0149ea72644ec7c",
+      "size": 342503
+    },
+    {
+      "path": "runtime/web/dist/assets/RichEditor-DxbWgvt8.css",
+      "sha256": "dd5a86fdd8c1464bd0f016bd992b1661271d53345bab0f3b1aa735c7e2e215a9",
+      "size": 7003
+    },
+    {
+      "path": "runtime/web/dist/assets/SourceEditor-B5gnlhuz.css",
+      "sha256": "9de7596b49b3fc576ca212ce1c99979b2a3945b7f29082724d3f3f715db7a429",
+      "size": 3393
+    },
+    {
+      "path": "runtime/web/dist/assets/SourceEditor-CXcGhmR9.js",
+      "sha256": "d15e1d17f1ae82b0b3b01fffafcd92fac351f2b575bb4ff15a69d37b3bacd92f",
+      "size": 110523
+    },
+    {
+      "path": "runtime/web/dist/assets/apl-CnwPGSsG.js",
+      "sha256": "5400e851838d5f1c66d74ed77e824e1cda8cd07990a4d1f3b53ea7674b129265",
+      "size": 2292
+    },
+    {
+      "path": "runtime/web/dist/assets/asciiarmor-qTkVPQu6.js",
+      "sha256": "014f6885a3964090e192bba32c8a1715a356352799a33c6e870603457ca0f773",
+      "size": 792
+    },
+    {
+      "path": "runtime/web/dist/assets/asn1-Dr8qZg38.js",
+      "sha256": "3fbf5d4e32c6279490b1ff42c34521fbecc0799a8589c0b05c4b2defd0171bf8",
+      "size": 3956
+    },
+    {
+      "path": "runtime/web/dist/assets/asterisk-Bja0s6e1.js",
+      "sha256": "8256ec2effec59c8dc512febfd1dc32168ae97897029360ffde380332dcb3813",
+      "size": 4079
+    },
+    {
+      "path": "runtime/web/dist/assets/brainfuck-D5EjA2JK.js",
+      "sha256": "5475a1a35d2dd641d8cd989a938161509774ccd2b76150b09c4058185476df6e",
+      "size": 599
+    },
+    {
+      "path": "runtime/web/dist/assets/clike-DHH8Ad3s.js",
+      "sha256": "ba237a6a3b9265b0e117d868d3769ac3538761af2f2cf5ccb98e1119673b9210",
+      "size": 22061
+    },
+    {
+      "path": "runtime/web/dist/assets/clojure-BflJGmDX.js",
+      "sha256": "3ccea67a7d55baa7ada3701e3382834b1c4b98caad17385635495df8ecf1b075",
+      "size": 9406
+    },
+    {
+      "path": "runtime/web/dist/assets/cmake-CyVbuzPu.js",
+      "sha256": "7a73a0a5845c48e0ee382725783c3cd0d2c0b241c0a83e5608968880e667831d",
+      "size": 780
+    },
+    {
+      "path": "runtime/web/dist/assets/cobol-B_OZ4V-R.js",
+      "sha256": "c2bef27c024b2460c9604998a1faa2e18058d00d52c744e3c2ad8c4f8e07dc39",
+      "size": 6223
+    },
+    {
+      "path": "runtime/web/dist/assets/coffeescript-B2pKbFk8.js",
+      "sha256": "95b078c85d91ec92a29a7e8f81b2bce2092af302490e22c192edfb072d93c8ff",
+      "size": 3855
+    },
+    {
+      "path": "runtime/web/dist/assets/commonlisp-CcllspGY.js",
+      "sha256": "d91a448a816b8be3cf7a2003c97f641b1b37a94c67104876beda944a71797bcf",
+      "size": 2320
+    },
+    {
+      "path": "runtime/web/dist/assets/crystal-M5-qzICs.js",
+      "sha256": "d434f1671e2333e5fe0924e532def402ed688d1d2e27ac4e3dde66f64dbce5d5",
+      "size": 5020
+    },
+    {
+      "path": "runtime/web/dist/assets/css-CYpP4FRV.js",
+      "sha256": "598f082de1c31dfdf3ceacc972ee6325cd9f075fbbf05071909573a53cc72a23",
+      "size": 24708
+    },
+    {
+      "path": "runtime/web/dist/assets/cypher-p9eYesGn.js",
+      "sha256": "cd05736f31fba1aa9830d94e6b3799236e0b8cd2b989674fb9b074532a8bb42c",
+      "size": 3182
+    },
+    {
+      "path": "runtime/web/dist/assets/d-BhMjBjQP.js",
+      "sha256": "fb7d6d3edfe0213609e48e0be0a20cfefb3eb2ccc8601a765557c0b6a6cd10ef",
+      "size": 3673
+    },
+    {
+      "path": "runtime/web/dist/assets/diff-ChtP43wD.js",
+      "sha256": "cf4c32c773b4aec08498fd170b7f74733a695fdbcbb18170413e05c8d64d4848",
+      "size": 302
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-4eVN4l73.js",
+      "sha256": "cab397a23f22b045faea2b7b12d84cfaa47f5420a524d40642f2d52464bc6aa4",
+      "size": 40192
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-AV03X4Rq.js",
+      "sha256": "068e0e2059397170b65ce6f00bda4f5e78da304283af1bc481a9e24413b06d7a",
+      "size": 14306
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BAkuY_If.js",
+      "sha256": "0eaec96199f8e22fcb055ff91d78e95854162eb57bd4019fc5082c3dfc3f4845",
+      "size": 84630
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BFlVNRHG.js",
+      "sha256": "70cb9ca4900d257b2a553e71b02af4ca47767cbecbe91b9207a4d1f03840cc65",
+      "size": 103860
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BPhzIyql.js",
+      "sha256": "29a03fb99004575bc6f6c90379a5cafc67d334ede4012636dbdf1f51b4459b2c",
+      "size": 44548
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BT4kuxwR.js",
+      "sha256": "f75ef6edce84bc942adc26d072d0b3fbd44211e412bfee6f1cef1392e4eea1da",
+      "size": 1959
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BV6JlCV5.js",
+      "sha256": "1f553d91031729fc87b11baed08b195dc94179489cc3366080517f61a7cff162",
+      "size": 83646
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-BYQ7PhOf.js",
+      "sha256": "2fef75ed0918687559e5e96dbaded026e1556109f762773b17d6a37dd5c7409e",
+      "size": 26818
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-CD1UYm4i.js",
+      "sha256": "3addbe30434281f3f5bd6dfca692e27b4364f68cf85a3fe21f978c36ae55dd1e",
+      "size": 11520
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-CGeoGYMs.js",
+      "sha256": "2fa9f0561b79cd7fba43fe7211b9904ac1602ed511cf6f2015c01570cfd7bd21",
+      "size": 30691
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-CGnWVmp-.js",
+      "sha256": "950a7c36103438d426a40440624776008a045d934b80a24c1f3d948bdc0defc6",
+      "size": 4904
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-CNqwa0DY.js",
+      "sha256": "b0f2cd35840344aeb55cb31a7a8b802c4e5b2062ed83b2c25c2ccfda0d271b84",
+      "size": 98110
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-Cz7C4RqW.js",
+      "sha256": "9292868d69093fc3ecd709a936f596be1e1196042bbfff6d721216ee64137759",
+      "size": 310707
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-D0W0Nn_b.js",
+      "sha256": "0562ddd2ba750b0d488bf15abee690dacbe761c2fc81bac0f86d2e24ac7568ca",
+      "size": 20673
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-D6sLNsD4.js",
+      "sha256": "702df14959bf39f612adb22fc1091547dcc5174f08a138e505aee6a4e43ebbe9",
+      "size": 22926
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-DEyGBsXP.js",
+      "sha256": "f5038743a274cebbd315c3e9b36a2b4d8a9839b3b6931e79d5bc1015a0997c6a",
+      "size": 2577
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-DWNDeYF4.js",
+      "sha256": "dc22854543e746258b1dee2144c1923e7bc3907a677a4826dc80ec28d0f5773e",
+      "size": 3293
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-DYeNgtfB.js",
+      "sha256": "493495c29404cf526be84c5a7178fd966f100506d19f7fb8c260ab0654bf5be3",
+      "size": 28481
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-DrEwHp5X.js",
+      "sha256": "d2f3ec67cb6df23cc1273582da196cf7126b07313c54d82eb2c2e0dc4e448a35",
+      "size": 20927
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-DzeivVk4.js",
+      "sha256": "6d6385e65fd22099b79a7bc7c4e94ad19e640f67a6f016052646100d494882e7",
+      "size": 46926
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-XBbHD4oM.js",
+      "sha256": "c471f15cffa7dd616cdef499ca23598124c234204f1650381dff90117ace6424",
+      "size": 8440
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-nhRcMRM4.js",
+      "sha256": "29881c6e99ed65aed71961753364f63c6c9574c3f1d17ec31115c9fcb148cfb8",
+      "size": 69
+    },
+    {
+      "path": "runtime/web/dist/assets/dist-nh_JIP11.js",
+      "sha256": "33943734a8c3e422845196c9ab0e054c9a880deebd9396f148e037320ec47f59",
+      "size": 16197
+    },
+    {
+      "path": "runtime/web/dist/assets/dockerfile-BLkNEvjs.js",
+      "sha256": "8cc6f0bdfaa62070798246cdf1b5b83691a5d039d495a0e937efa874044eca20",
+      "size": 1906
+    },
+    {
+      "path": "runtime/web/dist/assets/dtd-DTF72YNO.js",
+      "sha256": "8f289b3c0a603c2de057f44cfb513dcb9e24dfeff1ac299a0acde4f1279385a9",
+      "size": 2092
+    },
+    {
+      "path": "runtime/web/dist/assets/dylan-C6jEEEk-.js",
+      "sha256": "99f9413d9e91787727a9ecd6fef31a575ae64cf052c8497ddb687e34a62d02b9",
+      "size": 4041
+    },
+    {
+      "path": "runtime/web/dist/assets/ebnf-D4c0_ac3.js",
+      "sha256": "e39d883c18e1d0436f36926b7b46617128b40cfd7ed0a10bd66af695fcadfe97",
+      "size": 1979
+    },
+    {
+      "path": "runtime/web/dist/assets/ecl-BSZaIHnp.js",
+      "sha256": "affa7c131531c13c2d0d00f2dc5a0c00d5202d0851b89577a44e3cf6afb1f87a",
+      "size": 5092
+    },
+    {
+      "path": "runtime/web/dist/assets/eiffel-BEjRio4Q.js",
+      "sha256": "df2f416a891d40045c83ff1900af1cb87f72695ad4d87c50682738624c38a266",
+      "size": 1692
+    },
+    {
+      "path": "runtime/web/dist/assets/elm-Cshzl8qu.js",
+      "sha256": "7dc9b8c8a1289df3800c9ca773519840019d47deefb03dca7f7302b9882f12e9",
+      "size": 1866
+    },
+    {
+      "path": "runtime/web/dist/assets/erlang-DaB2Rkuy.js",
+      "sha256": "8a03693174fbe524fb01135a7cb3d1bcaa7f689b5cedd7db7f721bc254c15b16",
+      "size": 7846
+    },
+    {
+      "path": "runtime/web/dist/assets/factor-D7LVTn2l.js",
+      "sha256": "fecba759c76646929b0d02735cdf308cbc635e3c08fdd8468bd3e44a9ce7b3b7",
+      "size": 1669
+    },
+    {
+      "path": "runtime/web/dist/assets/fcl-ClOhbFR7.js",
+      "sha256": "08ce5e646edb4d614970bead56bd5b06f14093bc904af846e33b1d60fa142052",
+      "size": 2029
+    },
+    {
+      "path": "runtime/web/dist/assets/forth-Cezjo90N.js",
+      "sha256": "47d27b8b48a27e973c2395874d47df480293feee48bd5eb2c1c9e6446123e7e2",
+      "size": 2541
+    },
+    {
+      "path": "runtime/web/dist/assets/fortran-Bt6PBEDR.js",
+      "sha256": "0ee1b38b1c87eddf928e6d11929c96ad15d006d477182f4d6fb181475cbaaa25",
+      "size": 3862
+    },
+    {
+      "path": "runtime/web/dist/assets/gas-BHEdbvp9.js",
+      "sha256": "72ce032bf8e2f97291cb8070c844d7a36255c89a0b32f65d8f2865b9344ef472",
+      "size": 4550
+    },
+    {
+      "path": "runtime/web/dist/assets/gherkin-oBAE_ms0.js",
+      "sha256": "ca63055e8d4e39e3280607c357763a89ff08c3e719f48a2749f3d8cde1fea56d",
+      "size": 10156
+    },
+    {
+      "path": "runtime/web/dist/assets/groovy-BC3IOsC8.js",
+      "sha256": "fa3ac714651b2033f757a04bb70bdbc34505cc1371e2e09d70ddd80d139a0a6d",
+      "size": 4103
+    },
+    {
+      "path": "runtime/web/dist/assets/haskell-BRsoo5mP.js",
+      "sha256": "868e8b21da5021140b51775df3d9ebb51bf5aa0925b2dba75b9923e71a717e6d",
+      "size": 4159
+    },
+    {
+      "path": "runtime/web/dist/assets/haxe-DjVOVvNP.js",
+      "sha256": "d82d48ac4fdb69dd2dca969ecfb5e59dca97e15d10ec4872afe73d5ac1253325",
+      "size": 7862
+    },
+    {
+      "path": "runtime/web/dist/assets/http-CLVgA2GD.js",
+      "sha256": "94a0d68f2fa36fd78ed3f3c9483b33062fee90c694f4e70797d9cc5a6715b914",
+      "size": 845
+    },
+    {
+      "path": "runtime/web/dist/assets/idl-BUZw3wgd.js",
+      "sha256": "438714d3559726d0a0a3ac7a0a08267c929d0bb690fa2eef514b82322be2f6a4",
+      "size": 9826
+    },
+    {
+      "path": "runtime/web/dist/assets/index-C6t962kA.js",
+      "sha256": "a5b018ce4eb3a16226f1bf4b3f42f398c4fdb4a98ae6b53cc1a05c7366353490",
+      "size": 662575
+    },
+    {
+      "path": "runtime/web/dist/assets/index-CYwP9u7E.css",
+      "sha256": "916838f8295faf0036f45d733291dc7704bbd4f28daf550e9e24f599fa923760",
+      "size": 113413
+    },
+    {
+      "path": "runtime/web/dist/assets/javascript-8HiN0ThV.js",
+      "sha256": "0fb4158b2d865d1826b5635c507afa065b79dd0406d8b13568ee881da29caa75",
+      "size": 17020
+    },
+    {
+      "path": "runtime/web/dist/assets/julia-CQfgDRfP.js",
+      "sha256": "0c2cf72d1ac90213c3b42a91c800c587f75ee81e2bcde2712dddfd386d8967eb",
+      "size": 5263
+    },
+    {
+      "path": "runtime/web/dist/assets/livescript-BXxG0Yva.js",
+      "sha256": "fe8dcb554ae3e959a556e5e0d4c1d6b186818e451a4269ae603062c478094f96",
+      "size": 4081
+    },
+    {
+      "path": "runtime/web/dist/assets/lua-CiA1ziua.js",
+      "sha256": "090af1e4fd29be8231bae96f9d77d102b44102d3bd6dcb3b8b3f1c516c5ca3d8",
+      "size": 3130
+    },
+    {
+      "path": "runtime/web/dist/assets/mathematica-u8YMmbU0.js",
+      "sha256": "84ae4ba6bf879a4608696af785e17cedd8b581bdbea0c90f856585d451b34190",
+      "size": 1899
+    },
+    {
+      "path": "runtime/web/dist/assets/mbox-BEMVcqjs.js",
+      "sha256": "44dc8f20f0534aa78d31245211628291e31351f36bee1ac1d7aeb8a59a11d254",
+      "size": 1386
+    },
+    {
+      "path": "runtime/web/dist/assets/mirc-C9zpzAZU.js",
+      "sha256": "edc1c63e88e0942b88240b589af3bc3e6ada91a4996eb5eff61d64d069d8085a",
+      "size": 5917
+    },
+    {
+      "path": "runtime/web/dist/assets/mllike-B45xgp2S.js",
+      "sha256": "0530b163f7297af3234377ec8d70cc26919c6e38f3dd34c8069a30387ff666a0",
+      "size": 4823
+    },
+    {
+      "path": "runtime/web/dist/assets/modelica-CqHI_q-D.js",
+      "sha256": "e620fa810ea18a71a5d491ea8da8638f6113f1ae435c7300b9a2f2d332c5691f",
+      "size": 2795
+    },
+    {
+      "path": "runtime/web/dist/assets/mscgen-qgSLujhx.js",
+      "sha256": "53b24ee7c56bc57af791aed5bc20b0cf51333dd20c6f48eb9dd7d7a222a4d96b",
+      "size": 3499
+    },
+    {
+      "path": "runtime/web/dist/assets/mumps-CW_TBmxz.js",
+      "sha256": "cd4888d61b4888d599478b2755b9a21cd7d7a9f88438437592aafd1108111956",
+      "size": 1836
+    },
+    {
+      "path": "runtime/web/dist/assets/nginx-BMaDbqW3.js",
+      "sha256": "9d644ab2b41f3999d66c3bcb24d6edd1271b8ecf829d5e0c2fb887c21b459515",
+      "size": 7409
+    },
+    {
+      "path": "runtime/web/dist/assets/nsis-DC4QbuRD.js",
+      "sha256": "312f85bb9ca369ec165d1c7e6571cca75ec9e6c040d0ff11124ebd2b75a7d7c3",
+      "size": 7061
+    },
+    {
+      "path": "runtime/web/dist/assets/ntriples-d28e9m0E.js",
+      "sha256": "3db672ed21bc7737b5c24467a2ed5d4f4c71db5451943db207a473c2b66f6a4f",
+      "size": 2077
+    },
+    {
+      "path": "runtime/web/dist/assets/octave-D2Q8cUp1.js",
+      "sha256": "435819b2e5cd3263138c94a8970bb09101e4c3f186594eb4649f8bc604eecad9",
+      "size": 2101
+    },
+    {
+      "path": "runtime/web/dist/assets/oz-BwTct_5T.js",
+      "sha256": "122d799c67d18e54c5ef26e7786f81ae0fc4ce2dbdeb57aa2ff4b2e5f23fb0a8",
+      "size": 2881
+    },
+    {
+      "path": "runtime/web/dist/assets/pascal-Dp_KdFgX.js",
+      "sha256": "2d5e3c493596b6ffcc688ab63c6501d11be92ccb669d92b5c2a36cc876b7acdd",
+      "size": 2256
+    },
+    {
+      "path": "runtime/web/dist/assets/perl-CdEHsPfU.js",
+      "sha256": "7f30027478d81a58c797fb25d5d7f52d006f791bb68033414cfa565724c34abf",
+      "size": 9750
+    },
+    {
+      "path": "runtime/web/dist/assets/pig-AF4Hwhju.js",
+      "sha256": "fff5fffe6757c1708a03dec395f9b3bd038d30fce56b70e00960da5ea203c78e",
+      "size": 2513
+    },
+    {
+      "path": "runtime/web/dist/assets/powershell-CzG71I4L.js",
+      "sha256": "fee13c6c5d216a1fd9f22e8a7ada8cd9085657db7500aad8c032afd57acc5398",
+      "size": 7699
+    },
+    {
+      "path": "runtime/web/dist/assets/properties-C357ku5U.js",
+      "sha256": "265cd5a3bc8e8e1426825db6da7dfd6398db08f4ca5dc266b3f432a982868452",
+      "size": 664
+    },
+    {
+      "path": "runtime/web/dist/assets/protobuf-D1ij_kNL.js",
+      "sha256": "7c936836371bd94a649f756e6c07bb3f3139555c4a2c18c0ac6060ca26332d77",
+      "size": 802
+    },
+    {
+      "path": "runtime/web/dist/assets/pug-DyBTKFx8.js",
+      "sha256": "f0cda1881aa197e840cb181d8b00d3d2408935ca049abbc09c0a6200326daae7",
+      "size": 6670
+    },
+    {
+      "path": "runtime/web/dist/assets/puppet-B4hC2X4m.js",
+      "sha256": "e24cc779e2fcb1dd637a39addeac89f93ff946c471d2a38c427e2eaac5767e68",
+      "size": 2540
+    },
+    {
+      "path": "runtime/web/dist/assets/python-BqYw9LYJ.js",
+      "sha256": "a727e74f2054dbd01ecacd11cb5b152dcb8e0d4475b00d9b0333ce3e5ed58a29",
+      "size": 6284
+    },
+    {
+      "path": "runtime/web/dist/assets/q-B9NhS7L_.js",
+      "sha256": "b1aacfc6dada3beff2530353c44dbd3b7c9fa39f6c315e27de6b44825fcd7cb4",
+      "size": 3691
+    },
+    {
+      "path": "runtime/web/dist/assets/r-DADKenSm.js",
+      "sha256": "3df99c08c9f6817a1193cf7070f3dd61268a030fb27269934e37559154fe0898",
+      "size": 3008
+    },
+    {
+      "path": "runtime/web/dist/assets/rpm-gpDK5sbt.js",
+      "sha256": "5ad9e795d1d7fe0390cc015a03d54aef739a2244340e2deaf5df4f6ed013a8df",
+      "size": 1597
+    },
+    {
+      "path": "runtime/web/dist/assets/ruby-WyPU2rrm.js",
+      "sha256": "2f9583e6a9426172460da800e3d8df2d515952d03278e9bf89163991ebe3ea32",
+      "size": 5152
+    },
+    {
+      "path": "runtime/web/dist/assets/sas-C2OyD2Y6.js",
+      "sha256": "9c51535bc98848d00a7a16101ad2ff162cb44106468b7a7d595f04719e082cab",
+      "size": 9331
+    },
+    {
+      "path": "runtime/web/dist/assets/scheme-CyDdOh7e.js",
+      "sha256": "74c2dcfd0c2ca3c2bc80e7c226dcceb35951f8e865081c9048b68f8a78dd4c01",
+      "size": 6363
+    },
+    {
+      "path": "runtime/web/dist/assets/shell-Du5Qg9im.js",
+      "sha256": "470f9ee2ac0631ccef1d5db9db6ac0582e0eacb67b39f3be9104c91f0cb46a1d",
+      "size": 2449
+    },
+    {
+      "path": "runtime/web/dist/assets/sieve-BAxa3IjF.js",
+      "sha256": "5635d5ffda49d846ee9d85decc3b9a376a7eb8a23004ac1b47399ed3dd8c7b39",
+      "size": 1615
+    },
+    {
+      "path": "runtime/web/dist/assets/simple-mode-DRpGK0lJ.js",
+      "sha256": "206c834684429ce19371444cec0fdbf552b25611be84de45ad535f83db811076",
+      "size": 2295
+    },
+    {
+      "path": "runtime/web/dist/assets/smalltalk-BLp5-jwC.js",
+      "sha256": "559d0a977880456b4f916cf9b1592b375c96047cd9dd0a13b3598b4369072553",
+      "size": 1996
+    },
+    {
+      "path": "runtime/web/dist/assets/solr-BBopId9w.js",
+      "sha256": "85fb02343f917c8bc6f0fbfe6aeeb55afc1a46400f1637074b7279a4fc3e7876",
+      "size": 863
+    },
+    {
+      "path": "runtime/web/dist/assets/sparql-Dz-mlCAC.js",
+      "sha256": "02e59f6539d324beb643eee727f0b4356549cafe15f7aaceb3d3c34ee5bdad0d",
+      "size": 3331
+    },
+    {
+      "path": "runtime/web/dist/assets/spreadsheet-CTIncYxj.js",
+      "sha256": "d3af197570b0a504e7c45dcd619b58422c5cb2f54b9028e556768e2213b070f6",
+      "size": 1135
+    },
+    {
+      "path": "runtime/web/dist/assets/sql-DcCJ9jop.js",
+      "sha256": "11d4603515fd90865bee97a3cef54af333cd5fb47bfedb54933579b5d7d18234",
+      "size": 36858
+    },
+    {
+      "path": "runtime/web/dist/assets/stex-sDrdk2BW.js",
+      "sha256": "343813f7d5d80548d47a547b6ebb436e9f91d06b955057ed3de0f5f43b712a74",
+      "size": 3121
+    },
+    {
+      "path": "runtime/web/dist/assets/stylus-DLLZ8dgm.js",
+      "sha256": "4c52452bdc7ce831c92abae36bd8d90169ed1c3f2edd251f8b07ba018dab6e90",
+      "size": 23526
+    },
+    {
+      "path": "runtime/web/dist/assets/swift-DKB6_1j6.js",
+      "sha256": "f0835c04896ba11cf7884b2175e31574762723655d4e6461ce6ec7046479eaa3",
+      "size": 3762
+    },
+    {
+      "path": "runtime/web/dist/assets/tcl-BGfruO1u.js",
+      "sha256": "3e07cc02b94880557cd297c19f467421a7f452c8240534e7e9e7dbc4607b1813",
+      "size": 2353
+    },
+    {
+      "path": "runtime/web/dist/assets/textile-DWBqthVk.js",
+      "sha256": "1dfee04ae26f68786b7cf94d2f30e1012d729eb7e61de02a92f0a5b09dc73b87",
+      "size": 6772
+    },
+    {
+      "path": "runtime/web/dist/assets/tiddlywiki-VlUiK86J.js",
+      "sha256": "1bd675104bdfd2ac7ec250cefe80d8f48581bf103519f1c7407b2a4e3502da93",
+      "size": 2760
+    },
+    {
+      "path": "runtime/web/dist/assets/tiki-CxVlf5KZ.js",
+      "sha256": "468160d479ca40e23a59a25674ec41b56e4a7be1a5fc2fece53e5ec6a1b6f8f3",
+      "size": 3235
+    },
+    {
+      "path": "runtime/web/dist/assets/toml-LvoKBwCs.js",
+      "sha256": "2aa78a098cca1811b381dc61ebac67194ca813c77033122621f5223c75a8af67",
+      "size": 1190
+    },
+    {
+      "path": "runtime/web/dist/assets/troff-C2dAgh7P.js",
+      "sha256": "46bba1f3f4223fd204bf913bbeebdbc0256db1e69bd9a2e804175c5841ec8fe5",
+      "size": 957
+    },
+    {
+      "path": "runtime/web/dist/assets/ttcn-BePYh-hG.js",
+      "sha256": "4fba2238f56e9122a0c491585442ef0cca7058ec9c876e8508c817c2f483e214",
+      "size": 4824
+    },
+    {
+      "path": "runtime/web/dist/assets/ttcn-cfg-CY0aot7Q.js",
+      "sha256": "d83bc6911318ac67b309d81d33daa4c02a55b74257b4b0ebca2c0ff89dea8110",
+      "size": 4078
+    },
+    {
+      "path": "runtime/web/dist/assets/turtle-Cx3rYX2g.js",
+      "sha256": "ceb6ee2aef9f2a911bd3d33a4913af35ce960f77ce309d0e3173e5f257c50afc",
+      "size": 1955
+    },
+    {
+      "path": "runtime/web/dist/assets/vb-BthdM_4N.js",
+      "sha256": "e025945bc97ae2640b26c11b737636cc735b0600387077412dbbae1e488d2686",
+      "size": 3650
+    },
+    {
+      "path": "runtime/web/dist/assets/vbscript-D9f6rSsU.js",
+      "sha256": "17756f99b070ecf14eb93e21030c15c6fb5f483d189b18d34943ebef3802b173",
+      "size": 5431
+    },
+    {
+      "path": "runtime/web/dist/assets/velocity-CqftRsjg.js",
+      "sha256": "73fe5a94c56d83b21ad4bca500a377e32d2ecaab55df875ecae446a65a680cbe",
+      "size": 2703
+    },
+    {
+      "path": "runtime/web/dist/assets/verilog-D-x6ne0Z.js",
+      "sha256": "f202b9c16eb06e2dc0481b51bff5d4897c23c6ccd8f499309d0b7d397c271a90",
+      "size": 8435
+    },
+    {
+      "path": "runtime/web/dist/assets/vhdl-CMrOq2q1.js",
+      "sha256": "1456112e0d52a41e66605696107640ab6ac2acd2a569d011f70e2ca5df62a33a",
+      "size": 3312
+    },
+    {
+      "path": "runtime/web/dist/assets/w3c-keyname-BOAvb0qz.js",
+      "sha256": "ec10a23254c748386d66567cc24bb5f37e1fc1b5f0f0d5952336aeec0065a2c3",
+      "size": 1487
+    },
+    {
+      "path": "runtime/web/dist/assets/webidl-D5jiJvOU.js",
+      "sha256": "fc2dfdc276c574d2bbda79a675c05f6cebc4a24313b1c3a5743ef0b31290e05e",
+      "size": 2449
+    },
+    {
+      "path": "runtime/web/dist/assets/xquery-fj_R-kMw.js",
+      "sha256": "94590743c73661d812bcbdc8c877e0986fc29833cc1d67554b850fedffe79ee3",
+      "size": 6225
+    },
+    {
+      "path": "runtime/web/dist/assets/yacas-CXXgtw0p.js",
+      "sha256": "717ca22d8f94a5a221635a01bc506c11f0fe36088ed98f3a08532a7da9297831",
+      "size": 2141
+    },
+    {
+      "path": "runtime/web/dist/assets/z80-CL1naaMV.js",
+      "sha256": "137aa1ae99e516077226e37e4b76756a11830ca30e5d91b9b837d02f68ffdca5",
+      "size": 1755
+    },
+    {
+      "path": "runtime/web/dist/favicon.svg",
+      "sha256": "61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66",
+      "size": 9522
+    },
+    {
+      "path": "runtime/web/dist/icons.svg",
+      "sha256": "b45fa506195cfcdef406ba9f0c77b36ddc1a7c224040926ec70abc2fdea7b93a",
+      "size": 5031
+    },
+    {
+      "path": "runtime/web/dist/index.html",
+      "sha256": "b26eb1e7d749c72a31eaad8241a90040f50c09f47fd8c2488b4aca7e7ca64c5c",
+      "size": 506
+    }
+  ]
+}

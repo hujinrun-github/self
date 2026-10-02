@@ -22,6 +22,7 @@ var (
 	ErrInvalidReorder      = errors.New("reorder must include all resource ids")
 	ErrUnsafeMarkdownMedia = errors.New("markdown image references must use media assets instead of raw uploads paths")
 	ErrInvalidComment      = errors.New("comment name and body are required")
+	ErrInvalidVisitor      = errors.New("a valid visitor session is required")
 	ErrNotFound            = errors.New("content not found")
 )
 

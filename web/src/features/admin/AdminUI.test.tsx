@@ -1036,7 +1036,7 @@ describe("ContentEditPage", () => {
     fireEvent.change(screen.getByLabelText("结束月份"), { target: { value: "2024-06" } });
 
     expect(screen.getByText("2021.03 - 2024.06")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /保存草稿/i }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
@@ -1182,7 +1182,7 @@ describe("ContentEditPage", () => {
 
     await userEvent.type(screen.getByLabelText("标题"), "AI Notes");
     await userEvent.type(screen.getByLabelText("文章 Tags"), "AI{enter}Architecture{enter}");
-    await userEvent.click(screen.getByRole("button", { name: /保存草稿/i }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/writing");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
@@ -1228,7 +1228,7 @@ describe("ContentEditPage", () => {
     renderWithApp(<RouterProvider router={router} />);
 
     expect(await screen.findByDisplayValue("Existing")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /保存草稿/i }));
+    await userEvent.click(screen.getByRole("button", { name: "保存草稿" }));
 
     const updateCall = fetchMock.mock.calls[1];
     expect(updateCall?.[0]).toBe("/api/admin/projects/7");

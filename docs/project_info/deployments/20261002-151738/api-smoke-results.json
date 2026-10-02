@@ -1,0 +1,155 @@
+{
+  "checked_at": "2026-10-02T07:38:09.975992+00:00",
+  "results": [
+    {
+      "check": "public /api/health",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "public /zh",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "public /en",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "public /ja",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "anonymous admin rejected",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "admin login and CSRF",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "admin missing CSRF rejected",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "create draft writing",
+      "passed": true,
+      "detail": {
+        "id": 1
+      }
+    },
+    {
+      "check": "publish writing",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "missing visitor rejected",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "initial engagement",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "view dedup 1",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "view dedup 2",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "like set True",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "like set True",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "like set False",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "like set False",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "comment pending",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "pending comment hidden",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "admin pending list",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "approve comment",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "approved comment public",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "admin engagement statistics",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "comment delete",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "migration 006 applied",
+      "passed": false,
+      "detail": "psql failed"
+    },
+    {
+      "check": "admin logout",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "migration 006 applied",
+      "passed": true,
+      "detail": [
+        "001_initial",
+        "002_multilingual",
+        "003_writing_import",
+        "004_experience_tech",
+        "005_writing_engagement",
+        "006_writing_engagement_moderation"
+      ]
+    },
+    {
+      "check": "MinIO write read delete",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "test_harness_note": "Initial psql check used PGDATABASE URI without -d and failed before connecting. Corrected invocation passed."
+}

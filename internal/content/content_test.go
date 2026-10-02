@@ -206,8 +206,12 @@ func TestWritingEngagementRoutesStoreLikesAndComments(t *testing.T) {
 	router := chi.NewRouter()
 	RegisterSiteRoutes(router, repo)
 
-	likeRecorder := httptest.NewRecorder()
-	router.ServeHTTP(likeRecorder, httptest.NewRequest(http.MethodPost, "/api/site/writing/engaged-writing/like?locale=zh", nil))
+	initial := engagementRequest(router, http.MethodGet, "/api/site/writing/engaged-writing/engagement?locale=zh", "", nil)
+	if initial.Code != http.StatusOK || len(initial.Result().Cookies()) != 1 {
+		t.Fatalf("initialize visitor: %d %s", initial.Code, initial.Body.String())
+	}
+	cookie := initial.Result().Cookies()[0]
+	likeRecorder := engagementRequest(router, http.MethodPost, "/api/site/writing/engaged-writing/like?locale=zh", `{"liked":true}`, cookie)
 	if likeRecorder.Code != http.StatusOK {
 		t.Fatalf("like status = %d body=%s", likeRecorder.Code, likeRecorder.Body.String())
 	}
@@ -221,11 +225,7 @@ func TestWritingEngagementRoutesStoreLikesAndComments(t *testing.T) {
 		t.Fatalf("like_count = %d, want 1", likeBody.LikeCount)
 	}
 
-	commentRecorder := httptest.NewRecorder()
-	router.ServeHTTP(
-		commentRecorder,
-		httptest.NewRequest(http.MethodPost, "/api/site/writing/engaged-writing/comments?locale=zh", bytes.NewBufferString(`{"author_name":"Ada","body":"Great note."}`)),
-	)
+	commentRecorder := engagementRequest(router, http.MethodPost, "/api/site/writing/engaged-writing/comments?locale=zh", `{"author_name":"Ada","body":"Great note."}`, cookie)
 	if commentRecorder.Code != http.StatusCreated {
 		t.Fatalf("comment status = %d body=%s", commentRecorder.Code, commentRecorder.Body.String())
 	}
@@ -235,6 +235,9 @@ func TestWritingEngagementRoutesStoreLikesAndComments(t *testing.T) {
 	}
 	if comment.AuthorName != "Ada" || comment.Body != "Great note." {
 		t.Fatalf("comment = %+v", comment)
+	}
+	if _, err := repo.SetWritingCommentStatus(t.Context(), comment.ID, "published"); err != nil {
+		t.Fatalf("publish moderated comment: %v", err)
 	}
 
 	engagementRecorder := httptest.NewRecorder()
@@ -263,8 +266,11 @@ func TestWritingCommentRouteRejectsEmptyPayload(t *testing.T) {
 	router := chi.NewRouter()
 	RegisterSiteRoutes(router, repo)
 
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/site/writing/commented-writing/comments?locale=zh", bytes.NewBufferString(`{"author_name":"","body":""}`)))
+	initial := engagementRequest(router, http.MethodGet, "/api/site/writing/commented-writing/engagement?locale=zh", "", nil)
+	if initial.Code != http.StatusOK || len(initial.Result().Cookies()) != 1 {
+		t.Fatalf("initialize visitor: %d %s", initial.Code, initial.Body.String())
+	}
+	recorder := engagementRequest(router, http.MethodPost, "/api/site/writing/commented-writing/comments?locale=zh", `{"author_name":"","body":""}`, initial.Result().Cookies()[0])
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())

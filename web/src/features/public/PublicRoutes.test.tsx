@@ -450,7 +450,7 @@ describe("public locale routes", () => {
     });
   });
 
-  it("renders writing quick jumps and supports likes and comments", async () => {
+  it("renders writing quick jumps and supports server likes and moderated comments", async () => {
     window.localStorage.clear();
     vi.stubGlobal(
       "fetch",
@@ -461,7 +461,7 @@ describe("public locale routes", () => {
         const method = init?.method ?? "GET";
         if (url.pathname === "/api/site/writing/example/like" && method === "POST") {
           return Promise.resolve(
-            new Response(JSON.stringify({ like_count: 4 }), { headers: { "Content-Type": "application/json" }, status: 200 }),
+            new Response(JSON.stringify({ like_count: 4, liked: true }), { headers: { "Content-Type": "application/json" }, status: 200 }),
           );
         }
         if (url.pathname === "/api/site/writing/example/comments" && method === "POST") {
@@ -472,6 +472,7 @@ describe("public locale routes", () => {
                 body: "New thought",
                 created_at: "2026-07-20T10:00:00Z",
                 id: 2,
+                status: "pending",
               }),
               { headers: { "Content-Type": "application/json" }, status: 201 },
             ),
@@ -483,10 +484,20 @@ describe("public locale routes", () => {
               JSON.stringify({
                 comments: [{ author_name: "Ada", body: "First comment", created_at: "2026-07-19T10:00:00Z", id: 1 }],
                 like_count: 3,
+                liked: false,
+                comment_count: 1,
+                view_count: 10,
+                visitor_count: 8,
+                page: 1,
+                limit: 10,
+                has_more: false,
               }),
               { headers: { "Content-Type": "application/json" }, status: 200 },
             ),
           );
+        }
+        if (url.pathname === "/api/site/writing/example/view") {
+          return Promise.resolve(new Response(JSON.stringify({ view_count: 11, visitor_count: 8 }), { headers: { "Content-Type": "application/json" }, status: 200 }));
         }
         if (url.pathname === "/api/site/writing/example") {
           return Promise.resolve(
@@ -543,14 +554,15 @@ describe("public locale routes", () => {
     await userEvent.click(screen.getByRole("button", { name: /点赞/ }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /已点赞/ })).toHaveTextContent("4");
+      expect(screen.getByRole("button", { name: /取消点赞/ })).toHaveTextContent("4");
     });
 
     await userEvent.type(screen.getByLabelText("昵称"), "Lin");
     await userEvent.type(screen.getByLabelText("评论内容"), "New thought");
-    await userEvent.click(screen.getByRole("button", { name: "发布评论" }));
+    await userEvent.click(screen.getByRole("button", { name: "提交评论" }));
 
-    expect(await screen.findByText("New thought")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("审核通过后公开");
+    expect(screen.queryByText("New thought")).not.toBeInTheDocument();
   });
 
   it("loads the localized bio page from profile data and noindexes fallback locales", async () => {

@@ -1,5 +1,5 @@
 import { Menu, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { coerceLocale, publicLocaleCopy, supportedLocales, withLocale } from "./locale";
@@ -12,6 +12,9 @@ type LocaleLink = {
 
 export function PublicLayout({ alternates, children }: { alternates?: LocaleLink[]; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const { locale: localeParam } = useParams();
   const location = useLocation();
   const locale = coerceLocale(localeParam);
@@ -21,31 +24,57 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
     path: withLocale(targetLocale, stripLocalePrefix(location.pathname)),
   }));
 
+  useEffect(() => {
+    if (!open) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !headerRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    return () => document.removeEventListener("pointerdown", dismissOutside);
+  }, [open]);
+
   return (
     <div className={styles.shell} id="top">
+      <a className={styles.skipLink} href="#main-content" onClick={() => mainRef.current?.focus()}>
+        {skipLinkCopy(locale)}
+      </a>
       <div className={styles.surface}>
-        <header className={styles.header}>
+        <header
+          className={styles.header}
+          ref={headerRef}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && open) {
+              event.preventDefault();
+              setOpen(false);
+              menuButtonRef.current?.focus();
+            }
+          }}
+        >
           <div className={styles.bar}>
             <Link className={styles.brand} to={withLocale(locale, "/")}>
               <span aria-hidden="true" className={styles.brandMark}>研</span>
-              <span>{copy.portfolio}</span>
+              <span className={styles.brandName}>{copy.portfolio}</span>
             </Link>
             <button
+              aria-controls="public-navigation"
+              aria-expanded={open}
               aria-label={copy.menuToggle}
               className={styles.menuButton}
-              onClick={() => setOpen(!open)}
+              onClick={() => setOpen((currentOpen) => !currentOpen)}
+              ref={menuButtonRef}
               type="button"
             >
               {open ? <X aria-hidden="true" size={18} /> : <Menu aria-hidden="true" size={18} />}
             </button>
-            <nav aria-label="Primary" className={styles.nav} data-open={open}>
-              <Link className={isActivePath(location.pathname, withLocale(locale, "/")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/")}>
+            <nav aria-label="Primary" className={styles.nav} data-open={open} id="public-navigation">
+              <Link aria-current={isActivePath(location.pathname, withLocale(locale, "/")) ? "page" : undefined} className={isActivePath(location.pathname, withLocale(locale, "/")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/")}>
                 {copy.home}
               </Link>
-              <Link className={isActivePath(location.pathname, withLocale(locale, "/bio")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/bio")}>
+              <Link aria-current={isActivePath(location.pathname, withLocale(locale, "/bio")) ? "page" : undefined} className={isActivePath(location.pathname, withLocale(locale, "/bio")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/bio")}>
                 {copy.bio}
               </Link>
               <Link
+                aria-current={isActivePath(location.pathname, withLocale(locale, "/writing")) ? "page" : undefined}
                 className={isActivePath(location.pathname, withLocale(locale, "/writing")) ? styles.navLinkActive : ""}
                 onClick={() => setOpen(false)}
                 to={withLocale(locale, "/writing")}
@@ -53,6 +82,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
                 {copy.writing}
               </Link>
               <Link
+                aria-current={isActivePath(location.pathname, withLocale(locale, "/projects")) ? "page" : undefined}
                 className={isActivePath(location.pathname, withLocale(locale, "/projects")) ? styles.navLinkActive : ""}
                 onClick={() => setOpen(false)}
                 to={withLocale(locale, "/projects")}
@@ -60,6 +90,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
                 {copy.projects}
               </Link>
               <Link
+                aria-current={isActivePath(location.pathname, withLocale(locale, "/contact")) ? "page" : undefined}
                 className={isActivePath(location.pathname, withLocale(locale, "/contact")) ? styles.navLinkActive : ""}
                 onClick={() => setOpen(false)}
                 to={withLocale(locale, "/contact")}
@@ -72,6 +103,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
                 const active = link.locale === locale;
                 return (
                   <Link
+                    aria-current={active ? "page" : undefined}
                     className={`${styles.localeLink} ${active ? styles.localeLinkActive : ""}`}
                     key={link.locale}
                     onClick={() => setOpen(false)}
@@ -84,7 +116,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
             </nav>
           </div>
         </header>
-        <main className={styles.main}>{children}</main>
+        <main className={styles.main} id="main-content" ref={mainRef} tabIndex={-1}>{children}</main>
         <footer className={styles.footer}>
           <div className={styles.footerRow}>
             <div>
@@ -103,6 +135,16 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
       </div>
     </div>
   );
+}
+
+function skipLinkCopy(locale: string) {
+  if (locale === "en") {
+    return "Skip to main content";
+  }
+  if (locale === "ja") {
+    return "メインコンテンツへスキップ";
+  }
+  return "跳到主要内容";
 }
 
 function footerCopy(locale: string) {

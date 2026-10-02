@@ -20,14 +20,14 @@ describe("MarkdownEditor", () => {
     await screen.findByRole("textbox", { name: "Markdown 正文" }, { timeout: 3000 });
     expect(screen.queryByRole("button", { name: /Toggle fullscreen/i })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Fullscreen" }));
+    await userEvent.click(screen.getByRole("button", { name: "全屏写作" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Markdown 正文 fullscreen editor" });
+    const dialog = await screen.findByRole("dialog", { name: "Markdown 正文 · 全屏写作" });
     expect(dialog.parentElement).toBe(document.body);
     expect(document.body.style.overflow).toBe("hidden");
 
-    await userEvent.click(screen.getByRole("button", { name: "Exit fullscreen" }));
-    expect(screen.queryByRole("dialog", { name: "Markdown 正文 fullscreen editor" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "退出全屏" }));
+    expect(screen.queryByRole("dialog", { name: "Markdown 正文 · 全屏写作" })).not.toBeInTheDocument();
     expect(document.body.style.overflow).toBe("");
   });
 

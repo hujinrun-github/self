@@ -414,6 +414,25 @@ export function ProfilePage() {
           />
         </>
       )}
+      <div className={styles.mobileFormActions}>
+        <span>{translationLocale ? adminLocaleRoleLabel(translationLocale) : "资料修改完成后即可保存"}</span>
+        {currentTranslation ? (
+          <button
+            className={`${styles.button} ${styles.primary}`}
+            disabled={saving}
+            onClick={() => translationLocale && void saveTranslation(translationLocale)}
+            type="button"
+          >
+            <Save aria-hidden="true" size={18} />
+            {saving ? "保存中..." : "保存当前译文"}
+          </button>
+        ) : (
+          <button className={`${styles.button} ${styles.primary}`} disabled={saving} type="submit">
+            <Save aria-hidden="true" size={18} />
+            {saving ? "保存中..." : "完成并保存"}
+          </button>
+        )}
+      </div>
     </form>
   );
 }

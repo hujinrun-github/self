@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -126,7 +127,11 @@ func main() {
 				profile.RegisterSiteRoutes(r, profileRepo)
 			},
 			func(r chi.Router) {
-				content.RegisterSiteRoutes(r, contentRepo)
+				content.RegisterSiteRoutes(r, contentRepo, content.SiteEngagementOptions{
+					AllowedOrigins: append(append([]string{}, cfg.AllowedOrigins...), cfg.PublicBaseURL),
+					VisitorSecret:  cfg.SessionSecret,
+					SecureCookies:  strings.HasPrefix(cfg.PublicBaseURL, "https://"),
+				})
 			},
 			func(r chi.Router) {
 				site.RegisterRoutes(r, homeRepo)

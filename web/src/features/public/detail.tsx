@@ -58,10 +58,14 @@ export function DetailPage({ endpoint }: { endpoint: string }) {
 
   return (
     <PublicLayout alternates={detail?.alternates}>
-      <article className={styles.section}>
-        <h1>{detail?.item.title ?? copy.notFound}</h1>
-        <p className={styles.lede}>{detail?.item.summary ?? detail?.item.excerpt}</p>
-        <MarkdownView markdown={detail?.item.content_md ?? ""} media={detail?.item.media ?? {}} />
+      <article className={`${styles.articleSection} ${styles.detailPage}`}>
+        <header className={styles.articleHeader}>
+          <h1 className={styles.articleTitle}>{detail?.item.title ?? copy.notFound}</h1>
+          <p className={styles.articleLede}>{detail?.item.summary ?? detail?.item.excerpt}</p>
+        </header>
+        <div className={styles.articleBody}>
+          <MarkdownView markdown={detail?.item.content_md ?? ""} media={detail?.item.media ?? {}} />
+        </div>
       </article>
     </PublicLayout>
   );

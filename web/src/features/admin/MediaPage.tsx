@@ -1,4 +1,4 @@
-import { Trash2, Upload } from "lucide-react";
+import { Copy, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { APIRequestError, apiFetch } from "../../lib/api";
@@ -21,6 +21,7 @@ type MediaItem = {
 export function MediaPage() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [message, setMessage] = useState("");
+  const [copyFeedback, setCopyFeedback] = useState<{ id: number; text: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -40,6 +41,16 @@ export function MediaPage() {
     await apiFetch(`/api/admin/media/${item.id}`, { method: "DELETE" });
     setItems(items.filter((candidate) => candidate.id !== item.id));
     setMessage("媒体已删除。");
+  }
+
+  async function copyReference(itemID: number, reference: string) {
+    setMessage("");
+    try {
+      await navigator.clipboard.writeText(reference);
+      setCopyFeedback({ id: itemID, text: "引用已复制，可直接粘贴到正文。" });
+    } catch {
+      setCopyFeedback({ id: itemID, text: "暂时无法自动复制，请长按下方引用复制。" });
+    }
   }
 
   async function uploadFile(file: File) {
@@ -112,7 +123,7 @@ export function MediaPage() {
         ref={fileInput}
         type="file"
       />
-      {message ? <p className={styles.message}>{message}</p> : null}
+      {message ? <p className={styles.message} role="status">{message}</p> : null}
       {items.length === 0 ? (
         <div className={styles.emptyState}>
           <h2>还没有媒体素材</h2>
@@ -144,18 +155,30 @@ export function MediaPage() {
                 <div className={styles.mediaBody}>
                   <strong>{item.file_name}</strong>
                   <span>{item.referenced ? "已引用" : "未使用"}</span>
+                  {copyFeedback?.id === item.id ? <p className={styles.fieldHelp} role="status">{copyFeedback.text}</p> : null}
                   <code>{markdownRef}</code>
                 </div>
-                <button
-                  aria-label={`删除 ${item.file_name}`}
-                  className={`${styles.iconButton} ${styles.danger}`}
-                  disabled={item.referenced}
-                  onClick={() => void deleteItem(item)}
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={17} />
-                  删除
-                </button>
+                <div className={styles.mediaActions}>
+                  <button
+                    aria-label={`复制 ${item.file_name} 的引用`}
+                    className={styles.button}
+                    onClick={() => void copyReference(item.id, markdownRef)}
+                    type="button"
+                  >
+                    <Copy aria-hidden="true" size={17} />
+                    复制引用
+                  </button>
+                  <button
+                    aria-label={`删除 ${item.file_name}`}
+                    className={`${styles.iconButton} ${styles.danger}`}
+                    disabled={item.referenced}
+                    onClick={() => void deleteItem(item)}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={17} />
+                    删除
+                  </button>
+                </div>
               </article>
             );
           })}

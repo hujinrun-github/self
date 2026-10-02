@@ -1,0 +1,87 @@
+{
+  "checked_at": "2026-10-02T07:45:24.409224+00:00",
+  "results": [
+    {
+      "check": "test fixture cleanup recorded",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "container stable and healthy",
+      "passed": true,
+      "detail": {
+        "health": "healthy",
+        "restarts": 0,
+        "uptime_seconds": 768
+      }
+    },
+    {
+      "check": "running image matches release",
+      "passed": true,
+      "detail": {
+        "release": "portfolio-20261002-151738-af0d3fe8",
+        "image_id": "sha256:87c51f43d1b5ce302b443d92f3f030874d6493162978bbf5412dd34c35b73052"
+      }
+    },
+    {
+      "check": "runtime env unchanged",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "flowspace-backend unchanged and healthy",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "flowspace-frontend unchanged and healthy",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "running backend binary hash",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "frontend assets referenced",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "served /assets/index-C6t962kA.js",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "served /assets/index-CYwP9u7E.css",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "final HTTP /api/health",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "final HTTP /zh",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "final HTTP /en",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "final HTTP /ja",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "no fatal startup logs",
+      "passed": true,
+      "detail": null
+    }
+  ]
+}

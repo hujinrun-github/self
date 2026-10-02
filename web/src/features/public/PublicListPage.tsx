@@ -311,7 +311,7 @@ function ProjectShowcaseCard({
 }) {
   const content = (
     <>
-      <div className={styles.media} />
+      <div aria-hidden="true" className={styles.media}><FolderCode size={36} strokeWidth={1.3} /></div>
       <div className={styles.stack}>
         <div className={styles.editorialMeta}>
           {(entry.meta.length > 0 ? entry.meta : [entry.prominent ? featuredLabel : itemLabel]).map((value) => (

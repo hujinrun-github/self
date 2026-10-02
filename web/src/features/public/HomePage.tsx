@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Braces, Cpu, FolderCode, Inbox, PanelsTopLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -154,7 +154,7 @@ export function HomePage() {
         />
 
         <a aria-label={copy.experience} className={styles.heroScroll} href="#experience">
-          <span>01</span>
+          <span>{copy.experience}</span>
           <ArrowDownRight aria-hidden="true" size={17} />
         </a>
       </section>
@@ -227,7 +227,7 @@ export function HomePage() {
                 to={`${withLocale(locale, "/projects")}/${item.slug ?? item.id}`}
               >
                 <div aria-hidden="true" className={styles.projectVisual}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <span><FolderCode size={28} /></span>
                   <i />
                   <i />
                   <i />
@@ -253,7 +253,7 @@ export function HomePage() {
       </section>
 
       <section className={styles.contactBand}>
-        <p className={styles.sectionIndex}>04 / CONTACT</p>
+        <p className={styles.sectionIndex}>{copy.contact}</p>
         <h2>{design.contactTitle}</h2>
         <div>
           <p>{design.contactIntro}</p>
@@ -275,12 +275,12 @@ function SystemAtlas({ locale, mediaID, name }: { locale: Locale; mediaID?: numb
       <div className={styles.atlasMap}>
         <div className={styles.atlasPortrait}>
           <ProfileAvatar mediaID={mediaID} name={name} />
-          <span>PROFILE / HJR</span>
+          <span>{name}</span>
         </div>
         <div aria-hidden="true" className={styles.atlasSchematic}>
-          <span className={styles.atlasNode}>01</span>
-          <span className={styles.atlasNode}>02</span>
-          <span className={styles.atlasNode}>03</span>
+          <span className={styles.atlasNode}><Cpu size={21} /></span>
+          <span className={styles.atlasNode}><PanelsTopLeft size={21} /></span>
+          <span className={styles.atlasNode}><Braces size={21} /></span>
           <i />
           <i />
         </div>
@@ -320,7 +320,7 @@ function SectionHeader({ index, intro, title }: { index: string; intro: string; 
 function EmptyCollection({ description, title }: { description: string; title: string }) {
   return (
     <div className={styles.emptyState} role="status">
-      <span>00</span>
+      <span aria-hidden="true"><Inbox size={24} /></span>
       <div><h3>{title}</h3><p>{description}</p></div>
     </div>
   );
@@ -357,21 +357,21 @@ function designCopy(locale: Locale) {
       contactIntro: "Share the context and the outcome you need. We can start from the problem itself.",
       contactTitle: "Want to talk about products, systems, or tools?",
       discipline: "Engineering · Product design · Design systems",
-      experienceIndex: "01 / EXPERIENCE",
+      experienceIndex: "Experience",
       experienceIntro: "A concise timeline of focus, responsibilities, and accumulated practice.",
       experienceTitle: "Work trajectory",
       featured: "Featured work",
       focusItems: [["AI products", "Real workflows"], ["Design systems", "Consistency at scale"], ["Developer tools", "Speed and reliability"]] as const,
       focusTitle: "Current focus",
       iterating: "In progress",
-      projectsIndex: "03 / PROJECTS",
-      projectsIntro: "Published projects flow directly from the existing content system.",
+      projectsIndex: "Projects",
+      projectsIntro: "A selection of products, tools, and the thinking behind them.",
       projectsTitle: "Selected work",
       readMore: "Read more",
       socialLinks: "Social links",
       startContact: "Get in touch",
       viewProjects: "View projects",
-      writingIndex: "02 / WRITING",
+      writingIndex: "Writing",
       writingIntro: "Notes on products, systems, and reusable engineering decisions.",
       writingTitle: "Thinking index",
     };
@@ -381,21 +381,21 @@ function designCopy(locale: Locale) {
       contactIntro: "背景と目的を共有してください。問題そのものから一緒に考えます。",
       contactTitle: "プロダクト、システム、ツールについて話しませんか？",
       discipline: "開発 · プロダクトデザイン · デザインシステム",
-      experienceIndex: "01 / 経歴",
+      experienceIndex: "経歴",
       experienceIntro: "関心、役割、積み重ねを時系列で簡潔に整理します。",
       experienceTitle: "仕事の軌跡",
       featured: "注目プロジェクト",
       focusItems: [["AI プロダクト", "実際のワークフロー"], ["デザインシステム", "一貫性と拡張性"], ["開発者ツール", "効率と信頼性"]] as const,
       focusTitle: "現在の関心",
       iterating: "継続中",
-      projectsIndex: "03 / プロジェクト",
-      projectsIntro: "公開されたプロジェクトは既存のコンテンツ管理から自動反映されます。",
+      projectsIndex: "プロジェクト",
+      projectsIntro: "プロダクトやツールと、その設計で考えたことを紹介します。",
       projectsTitle: "選んだ仕事",
       readMore: "続きを読む",
       socialLinks: "ソーシャルリンク",
       startContact: "連絡する",
       viewProjects: "プロジェクトを見る",
-      writingIndex: "02 / 文章",
+      writingIndex: "文章",
       writingIntro: "プロダクト、システム、実装判断を再利用できる形で記録します。",
       writingTitle: "思考の索引",
     };
@@ -404,21 +404,21 @@ function designCopy(locale: Locale) {
     contactIntro: "留下你的背景与目标，我们会从问题本身开始讨论。",
     contactTitle: "想聊聊产品、系统或工具？",
     discipline: "研发 · 产品设计 · 设计系统",
-    experienceIndex: "01 / 经历",
+    experienceIndex: "经历",
     experienceIntro: "按时间顺序梳理关注方向、职责和持续积累。",
     experienceTitle: "工作轨迹",
     featured: "重点项目",
     focusItems: [["AI 产品", "真实工作流"], ["设计系统", "一致与可扩展"], ["开发者工具", "效率与可靠性"]] as const,
     focusTitle: "当前关注",
     iterating: "持续迭代",
-    projectsIndex: "03 / 项目",
-    projectsIntro: "项目内容沿用现有后台数据，发布后自动进入首页。",
+    projectsIndex: "项目",
+    projectsIntro: "一些持续打磨的产品与工具，以及它们背后的设计思考。",
     projectsTitle: "精选工作",
     readMore: "继续阅读",
     socialLinks: "社交链接",
     startContact: "发起联系",
     viewProjects: "查看项目",
-    writingIndex: "02 / 写作",
+    writingIndex: "写作",
     writingIntro: "围绕产品、系统和工程实践记录可复用的判断。",
     writingTitle: "思考索引",
   };

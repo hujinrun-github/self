@@ -1,4 +1,5 @@
 import ReactMarkdown, { type Components } from "react-markdown";
+import type { Element, Root } from "hast";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
@@ -17,12 +18,6 @@ export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps)
     normalizeLooseImageReferences(markdown),
     media,
   );
-  let headingIDIndex = 0;
-
-  function nextHeadingID() {
-    return headingIDs?.[headingIDIndex++];
-  }
-
   const components: Components = {
     a({ href, children }) {
       const resolvedHref = resolveMediaURL(href, media)?.url ?? href;
@@ -71,22 +66,13 @@ export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps)
         />
       );
     },
-    h1({ children }) {
-      return <h1 id={nextHeadingID()}>{children}</h1>;
-    },
-    h2({ children }) {
-      return <h2 id={nextHeadingID()}>{children}</h2>;
-    },
-    h3({ children }) {
-      return <h3 id={nextHeadingID()}>{children}</h3>;
-    },
   };
 
   return (
     <div className={styles.prose}>
       <ReactMarkdown
         components={components}
-        rehypePlugins={[rehypeSanitize]}
+        rehypePlugins={[rehypeSanitize, headingTargets(headingIDs)]}
         remarkPlugins={[remarkGfm]}
         skipHtml
       >
@@ -94,6 +80,24 @@ export function MarkdownView({ headingIDs, markdown, media }: MarkdownViewProps)
       </ReactMarkdown>
     </div>
   );
+}
+
+// Assign targets once to the parsed document, independent of React render calls.
+function headingTargets(ids: readonly string[] = []) {
+  return () => (tree: Root) => {
+    let index = 0;
+    function visit(parent: Root | Element) {
+      for (const node of parent.children) {
+        if (node.type !== "element") continue;
+        if (/^h[1-3]$/.test(node.tagName)) {
+          const id = ids[index++];
+          if (id) node.properties.id = id;
+        }
+        visit(node);
+      }
+    }
+    visit(tree);
+  };
 }
 
 function rewriteMediaReferences(markdown: string, media: MediaMap) {

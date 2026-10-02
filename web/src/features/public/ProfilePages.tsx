@@ -86,7 +86,9 @@ export function BioPage() {
           <article className={styles.panel}>
             <SectionHeading icon={<UserRound aria-hidden="true" size={18} />} title={copy.bio} />
             {profile?.bio?.trim() ? (
-              <MarkdownView markdown={profile.bio} media={{}} />
+              <div className={styles.articleBody}>
+                <MarkdownView markdown={profile.bio} media={{}} />
+              </div>
             ) : (
               <div className={styles.stack}>
                 {paragraphize(biography).map((paragraph) => (

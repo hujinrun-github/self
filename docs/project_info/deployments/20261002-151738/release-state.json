@@ -1,0 +1,29 @@
+{
+  "release_id": "portfolio-20261002-151738-af0d3fe8",
+  "release_dir": "/home/ubuntu/apps/self/runtime/releases/portfolio-20261002-151738-af0d3fe8",
+  "old_container_id": "149066755cea80de6de79557e40eabe73140d7fefeac7fe2e109187a05317ff2",
+  "old_image_id": "sha256:79534dd4bee00523e1e22d94a2065e8ff15f927c866a140a3885a7733cfe806a",
+  "old_image_name": "self-portfolio-app",
+  "rollback_tag": "self-portfolio-app:rollback-20261002-151738-af0d3fe8",
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "flowspace_baseline": {
+    "flowspace-backend": {
+      "id": "54ab4d887623fa7fe577dcf0b4642ed86a68095dbb599371887a262c5855f9ce",
+      "config_hash": "51c0ffb94982085de120859f0dee4eeda6b6b9d06becd20656b404b9e60ccb3c"
+    },
+    "flowspace-frontend": {
+      "id": "95304be251ac522112751fa35e02a843e847756b05261590846c25280201aa16",
+      "config_hash": "346c11c17cc9cda2150f3f91b45fa9cfbb9c3088614049df09489b920ed277d7"
+    }
+  },
+  "database_backup": "/home/ubuntu/apps/self/runtime/releases/portfolio-20261002-151738-af0d3fe8/backups/portfolio-before.dump",
+  "database_backup_sha256": "cf35636d5fa27d86c4d6365633fdf4d2851c3bfa2b31ac08d40c291a3bc1bbe4",
+  "candidate_image": "self-portfolio-app:20261002-151738-af0d3fe8",
+  "candidate_image_id": "sha256:87c51f43d1b5ce302b443d92f3f030874d6493162978bbf5412dd34c35b73052",
+  "deployed_at": "2026-10-02T07:32:38.454491+00:00",
+  "new_container_id": "3fdfc6f635450942375bef8330284cbe1d087334089a12060869b20328e4d0b5",
+  "status": "verified",
+  "runtime_config_preserved": true,
+  "verified_at": "2026-10-02T07:45:24.409224+00:00",
+  "test_fixtures_cleaned": true
+}

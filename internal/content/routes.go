@@ -15,6 +15,7 @@ import (
 )
 
 func RegisterAdminRoutes(r chi.Router, repo *Repository, generators ...ContentTranslationGenerator) {
+	registerAdminEngagement(r, repo)
 	var generator ContentTranslationGenerator
 	if len(generators) > 0 {
 		generator = generators[0]
@@ -88,7 +89,8 @@ func getHandler[O any](fn func(ctx context.Context, id int64) (O, error)) http.H
 	}
 }
 
-func RegisterSiteRoutes(r chi.Router, repo *Repository) {
+func RegisterSiteRoutes(r chi.Router, repo *Repository, options ...SiteEngagementOptions) {
+	registerSiteEngagement(r, repo, options)
 	r.Get("/api/site/projects", func(w http.ResponseWriter, req *http.Request) {
 		locale := i18n.CoerceLocale(req.URL.Query().Get("locale"))
 		items, meta, err := repo.PublicProjectsByLocale(req.Context(), locale, limitFromRequest(req))
@@ -109,9 +111,6 @@ func RegisterSiteRoutes(r chi.Router, repo *Repository) {
 		item, meta, alternates, err := repo.PublicWritingByLocaleSlug(req.Context(), locale, chi.URLParam(req, "slug"))
 		writeResult(w, LocalizedDetailResponse[Writing]{LocaleMeta: meta, Item: item, Alternates: alternates}, err)
 	})
-	r.Get("/api/site/writing/{slug}/engagement", writingEngagementHandler(repo))
-	r.Post("/api/site/writing/{slug}/like", likeWritingHandler(repo))
-	r.Post("/api/site/writing/{slug}/comments", createWritingCommentHandler(repo))
 	r.Get("/api/site/talks", func(w http.ResponseWriter, req *http.Request) {
 		locale := i18n.CoerceLocale(req.URL.Query().Get("locale"))
 		items, meta, err := repo.PublicTalksByLocale(req.Context(), locale, limitFromRequest(req))
@@ -197,46 +196,6 @@ func updateExperienceHandler(repo *Repository) http.HandlerFunc {
 		}
 		experience, err := repo.UpdateExperience(req.Context(), id, input)
 		writeResult(w, experience, err)
-	}
-}
-
-func writingEngagementHandler(repo *Repository) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		writing, ok := publicWritingFromRequest(w, req, repo)
-		if !ok {
-			return
-		}
-		engagement, err := repo.WritingEngagement(req.Context(), writing.ID)
-		writeResult(w, engagement, err)
-	}
-}
-
-func likeWritingHandler(repo *Repository) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		writing, ok := publicWritingFromRequest(w, req, repo)
-		if !ok {
-			return
-		}
-		likeCount, err := repo.LikeWriting(req.Context(), writing.ID)
-		writeResult(w, struct {
-			LikeCount int `json:"like_count"`
-		}{LikeCount: likeCount}, err)
-	}
-}
-
-func createWritingCommentHandler(repo *Repository) http.HandlerFunc {
-	return func(w http.ResponseWriter, req *http.Request) {
-		writing, ok := publicWritingFromRequest(w, req, repo)
-		if !ok {
-			return
-		}
-		var input WritingCommentInput
-		if err := json.NewDecoder(req.Body).Decode(&input); err != nil {
-			httpserver.WriteError(w, http.StatusBadRequest, "validation_error", "Invalid request payload", nil)
-			return
-		}
-		comment, err := repo.CreateWritingComment(req.Context(), writing.ID, input)
-		writeCreated(w, comment, err)
 	}
 }
 

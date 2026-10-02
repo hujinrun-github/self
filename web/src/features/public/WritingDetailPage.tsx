@@ -1,14 +1,17 @@
-import { ArrowRight, CalendarDays, Heart, ListTree, MessageCircle, Send } from "lucide-react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, CalendarDays, ChevronDown, Heart, ListTree, MessageCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { MarkdownView } from "../../components/markdown/MarkdownView";
-import { apiFetch } from "../../lib/api";
+import { APIRequestError, apiFetch } from "../../lib/api";
 import type { MediaMap } from "../../lib/types";
 import { usePublicPageMeta } from "./head";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import { PublicLayout } from "./PublicLayout";
 import styles from "./Public.module.css";
+import { WritingEngagementSection, WritingEngagementSummary } from "./WritingEngagement";
+import { useWritingEngagement } from "./WritingEngagementState";
+import engagementStyles from "./WritingEngagement.module.css";
 
 type Term = {
   name?: string;
@@ -52,37 +55,14 @@ type WritingListResponse = {
   resolved_locale: string;
 };
 
-type WritingComment = {
-  id: number;
-  author_name: string;
-  body: string;
-  created_at: string;
-};
-
-type WritingEngagement = {
-  like_count: number;
-  comments: WritingComment[];
-};
-
-type WritingLikeResponse = {
-  like_count: number;
-};
-
 type DetailCopy = {
-  commentBody: string;
-  commentBodyPlaceholder: string;
-  commentError: string;
-  commentName: string;
-  commentNamePlaceholder: string;
+  backList: string;
   comments: string;
-  emptyComments: string;
   jumpBody: string;
   jumpComments: string;
   jumpTitle: string;
-  liked: string;
   likeLabel: string;
   moreWriting: string;
-  publishComment: string;
   reading: string;
   tags: string;
   toc: string;
@@ -96,58 +76,37 @@ type TocItem = {
 
 const detailCopy: Record<Locale, DetailCopy> = {
   zh: {
-    commentBody: "评论内容",
-    commentBodyPlaceholder: "写下你的想法，或补充一个相关经验。",
-    commentError: "评论发送失败，请稍后再试。",
-    commentName: "昵称",
-    commentNamePlaceholder: "怎么称呼你",
+    backList: "返回文章列表",
     comments: "评论",
-    emptyComments: "还没有评论，欢迎留下第一条想法。",
     jumpBody: "正文",
     jumpComments: "评论",
     jumpTitle: "快捷跳转",
-    liked: "已点赞",
     likeLabel: "点赞",
     moreWriting: "更多文章",
-    publishComment: "发布评论",
     reading: "正在阅读",
     tags: "标签",
     toc: "目录",
   },
   en: {
-    commentBody: "Comment",
-    commentBodyPlaceholder: "Share a thought, question, or related note.",
-    commentError: "Could not send the comment. Please try again.",
-    commentName: "Name",
-    commentNamePlaceholder: "How should I call you?",
+    backList: "Back to writing",
     comments: "Comments",
-    emptyComments: "No comments yet. Start the discussion.",
     jumpBody: "Article",
     jumpComments: "Comments",
     jumpTitle: "Quick jump",
-    liked: "Liked",
     likeLabel: "Like",
     moreWriting: "More writing",
-    publishComment: "Post comment",
     reading: "Reading",
     tags: "Tags",
     toc: "Contents",
   },
   ja: {
-    commentBody: "コメント",
-    commentBodyPlaceholder: "感想、質問、関連するメモを書いてください。",
-    commentError: "コメントを送信できませんでした。もう一度お試しください。",
-    commentName: "名前",
-    commentNamePlaceholder: "表示名",
+    backList: "記事一覧に戻る",
     comments: "コメント",
-    emptyComments: "まだコメントはありません。最初のコメントをどうぞ。",
     jumpBody: "本文",
     jumpComments: "コメント",
     jumpTitle: "クイック移動",
-    liked: "いいね済み",
     likeLabel: "いいね",
     moreWriting: "他の記事",
-    publishComment: "コメントを投稿",
     reading: "閲覧中",
     tags: "タグ",
     toc: "目次",
@@ -160,34 +119,38 @@ export function WritingDetailPage() {
   const location = useLocation();
   const copy = publicLocaleCopy(locale);
   const pageCopy = detailCopy[locale];
+  const mobileContentsRef = useRef<HTMLDetailsElement>(null);
   const detailEndpoint = withLocaleQuery(`/api/site/writing/${slug}`, locale);
-  const engagementEndpoint = withLocaleQuery(`/api/site/writing/${slug}/engagement`, locale);
 
-  const [detail, setDetail] = useState<WritingDetailResponse | null>(null);
-  const [quickLinks, setQuickLinks] = useState<WritingSummary[]>([]);
-  const [engagement, setEngagement] = useState<WritingEngagement>({ comments: [], like_count: 0 });
-  const [likedArticleIDs, setLikedArticleIDs] = useState<Record<number, boolean>>({});
-  const [commentForm, setCommentForm] = useState({ authorName: "", body: "" });
-  const [commentError, setCommentError] = useState("");
-  const [submittingComment, setSubmittingComment] = useState(false);
-
-  useEffect(() => {
-    apiFetch<WritingDetailResponse>(detailEndpoint)
-      .then(setDetail)
-      .catch(() => setDetail(null));
-  }, [detailEndpoint]);
+  const [detailState, setDetailState] = useState<{ endpoint: string; detail: WritingDetailResponse | null; error: "notFound" | "failed" | null }>({ endpoint: "", detail: null, error: null });
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const [quickLinks, setQuickLinks] = useState<{ locale: Locale; items: WritingSummary[] }>({ locale, items: [] });
+  const detail = detailState.endpoint === detailEndpoint ? detailState.detail : null;
+  const detailError = detailState.endpoint === detailEndpoint ? detailState.error : null;
+  const engagement = useWritingEngagement(slug, locale, Boolean(detail?.item.id));
+  const statusCopy = {
+    zh: { loading: "正在加载文章…", failed: "文章暂时无法加载", retry: "重新加载文章" },
+    en: { loading: "Loading article…", failed: "Could not load this article", retry: "Reload article" },
+    ja: { loading: "記事を読み込み中…", failed: "記事を読み込めませんでした", retry: "記事を再読み込み" },
+  }[locale];
 
   useEffect(() => {
-    apiFetch<WritingListResponse>(withLocaleQuery("/api/site/writing?limit=8", locale))
-      .then((response) => setQuickLinks(response.items))
-      .catch(() => setQuickLinks([]));
+    const controller = new AbortController();
+    apiFetch<WritingDetailResponse>(detailEndpoint, { signal: controller.signal })
+      .then((response) => { if (!controller.signal.aborted) setDetailState({ endpoint: detailEndpoint, detail: response, error: null }); })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setDetailState({ endpoint: detailEndpoint, detail: null, error: error instanceof APIRequestError && error.status === 404 ? "notFound" : "failed" });
+      });
+    return () => controller.abort();
+  }, [detailEndpoint, detailAttempt]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch<WritingListResponse>(withLocaleQuery("/api/site/writing?limit=8", locale), { signal: controller.signal })
+      .then((response) => { if (!controller.signal.aborted) setQuickLinks({ locale, items: response.items }); })
+      .catch(() => { if (!controller.signal.aborted) setQuickLinks({ locale, items: [] }); });
+    return () => controller.abort();
   }, [locale]);
-
-  useEffect(() => {
-    apiFetch<WritingEngagement>(engagementEndpoint)
-      .then((response) => setEngagement(normalizeEngagement(response)))
-      .catch(() => setEngagement({ comments: [], like_count: 0 }));
-  }, [engagementEndpoint]);
 
   const canonicalPath = useMemo(() => {
     if (!detail) {
@@ -197,12 +160,10 @@ export function WritingDetailPage() {
   }, [detail, location.pathname]);
 
   const relatedLinks = useMemo(
-    () => quickLinks.filter((item) => item.slug !== detail?.item.slug).slice(0, 5),
-    [detail?.item.slug, quickLinks],
+    () => (quickLinks.locale === locale ? quickLinks.items : []).filter((item) => item.slug !== detail?.item.slug).slice(0, 5),
+    [detail?.item.slug, locale, quickLinks],
   );
   const tagNames = (detail?.item.tags ?? []).map((tag) => tag.name).filter((name): name is string => Boolean(name));
-  const comments = engagement.comments ?? [];
-  const liked = detail?.item.id ? likedArticleIDs[detail.item.id] ?? isWritingLiked(detail.item.id) : false;
   const publishedDate = formatPublishedDate(detail?.item.published_at, locale);
   const contentMarkdown = detail?.item.content_md ?? "";
   const tocItems = useMemo(() => extractTableOfContents(contentMarkdown), [contentMarkdown]);
@@ -218,65 +179,23 @@ export function WritingDetailPage() {
     title: detail?.item.title ? `${detail.item.title} | ${copy.portfolio}` : copy.portfolio,
   });
 
-  async function handleLike() {
-    if (!detail?.item.id || liked) {
-      return;
-    }
-    const response = await apiFetch<WritingLikeResponse>(withLocaleQuery(`/api/site/writing/${slug}/like`, locale), {
-      method: "POST",
-    });
-    window.localStorage.setItem(likedStorageKey(detail.item.id), "true");
-    setLikedArticleIDs((current) => ({ ...current, [detail.item.id]: true }));
-    setEngagement((current) => ({ ...current, like_count: response.like_count }));
-  }
-
-  async function handleCommentSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const authorName = commentForm.authorName.trim();
-    const body = commentForm.body.trim();
-    if (!authorName || !body) {
-      return;
-    }
-    setSubmittingComment(true);
-    setCommentError("");
-    try {
-      const comment = await apiFetch<WritingComment>(withLocaleQuery(`/api/site/writing/${slug}/comments`, locale), {
-        body: JSON.stringify({ author_name: authorName, body }),
-        method: "POST",
-      });
-      setEngagement((current) => ({ ...current, comments: [comment, ...(current.comments ?? [])] }));
-      setCommentForm({ authorName, body: "" });
-    } catch {
-      setCommentError(pageCopy.commentError);
-    } finally {
-      setSubmittingComment(false);
-    }
-  }
-
   return (
     <PublicLayout alternates={detail?.alternates}>
       <article className={`${styles.section} ${styles.articleSection}`}>
         <div className={styles.articleLayout}>
-          <main className={styles.articleMain}>
+          <div className={styles.articleMain}>
+            <Link className={styles.mobileBackLink} to={withLocale(locale, "/writing")}>
+              <ArrowLeft aria-hidden="true" size={16} />
+              {pageCopy.backList}
+            </Link>
             <header className={styles.articleHeader}>
               <div className={styles.articleHeaderGrid}>
                 <div className={styles.articleHeaderCopy}>
                   <p className={styles.sectionIndex}>{pageCopy.reading}</p>
-                  <h1 className={styles.articleTitle}>{detail?.item.title ?? copy.notFound}</h1>
+                  <h1 className={styles.articleTitle}>{detail?.item.title ?? (detailError === "notFound" ? copy.notFound : detailError ? statusCopy.failed : statusCopy.loading)}</h1>
                   {detail?.item.excerpt ? <p className={styles.articleLede}>{detail.item.excerpt}</p> : null}
                 </div>
-                <div className={styles.articleDigest} aria-label="Article activity">
-                  <span>
-                    <MessageCircle aria-hidden="true" size={14} />
-                    <strong>{comments.length}</strong>
-                    {pageCopy.comments}
-                  </span>
-                  <span>
-                    <Heart aria-hidden="true" size={14} />
-                    <strong>{engagement.like_count}</strong>
-                    {pageCopy.likeLabel}
-                  </span>
-                </div>
+                <WritingEngagementSummary engagement={engagement} locale={locale} />
               </div>
               <div className={styles.articleMetaStrip}>
                 {publishedDate ? (
@@ -297,6 +216,34 @@ export function WritingDetailPage() {
               </div>
             </header>
 
+            {detailError ? <div className={engagementStyles.detailError} role="alert">
+              {detailError === "notFound" ? copy.notFound : statusCopy.failed}
+              <button type="button" onClick={() => { setDetailState({ endpoint: detailEndpoint, detail: null, error: null }); setDetailAttempt((current) => current + 1); }}>{statusCopy.retry}</button>
+            </div> : null}
+
+            {detail?.item.id ? (
+              <details className={styles.mobileArticleContents} data-testid="mobile-article-contents" key={detailEndpoint} ref={mobileContentsRef}>
+                <summary>
+                  <ListTree aria-hidden="true" size={17} />
+                  <span>{pageCopy.toc}</span>
+                  <ChevronDown aria-hidden="true" className={styles.contentsChevron} size={16} />
+                </summary>
+                <nav aria-label={`${pageCopy.toc} · ${pageCopy.jumpTitle}`} onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a")) mobileContentsRef.current?.removeAttribute("open");
+                }}>
+                  <div className={styles.mobileContentsActions}>
+                    <a href="#article-body">{pageCopy.jumpBody}</a>
+                    <a href="#article-comments">{pageCopy.jumpComments}</a>
+                  </div>
+                  {tocItems.map((item) => (
+                    <a className={`${styles.tocLink} ${tocDepthClassName(item.depth)}`} href={`#${item.id}`} key={item.id}>
+                      {item.title}
+                    </a>
+                  ))}
+                </nav>
+              </details>
+            ) : null}
+
             <div className={styles.articleBody} id="article-body">
               <MarkdownView
                 headingIDs={tocItems.map((item) => item.id)}
@@ -305,72 +252,8 @@ export function WritingDetailPage() {
               />
             </div>
 
-            <section className={styles.articleEngagement} id="article-comments">
-              <div className={styles.engagementHeader}>
-                <div>
-                  <p className={styles.sectionIndex}>{pageCopy.comments}</p>
-                  <h2>{pageCopy.comments}</h2>
-                </div>
-                <button
-                  className={`${styles.likeButton} ${liked ? styles.likeButtonActive : ""}`}
-                  disabled={liked || !detail?.item.id}
-                  onClick={handleLike}
-                  type="button"
-                >
-                  <Heart aria-hidden="true" fill={liked ? "currentColor" : "none"} size={17} />
-                  <span>{liked ? pageCopy.liked : pageCopy.likeLabel}</span>
-                  <strong>{engagement.like_count}</strong>
-                </button>
-              </div>
-
-              <form className={styles.commentForm} onSubmit={handleCommentSubmit}>
-                <label>
-                  <span>{pageCopy.commentName}</span>
-                  <input
-                    maxLength={80}
-                    onChange={(event) => setCommentForm((current) => ({ ...current, authorName: event.target.value }))}
-                    placeholder={pageCopy.commentNamePlaceholder}
-                    required
-                    value={commentForm.authorName}
-                  />
-                </label>
-                <label>
-                  <span>{pageCopy.commentBody}</span>
-                  <textarea
-                    maxLength={1000}
-                    onChange={(event) => setCommentForm((current) => ({ ...current, body: event.target.value }))}
-                    placeholder={pageCopy.commentBodyPlaceholder}
-                    required
-                    rows={4}
-                    value={commentForm.body}
-                  />
-                </label>
-                <div className={styles.commentFormActions}>
-                  {commentError ? <p className={styles.commentError}>{commentError}</p> : <span />}
-                  <button className={styles.button} disabled={submittingComment} type="submit">
-                    <Send aria-hidden="true" size={16} />
-                    {pageCopy.publishComment}
-                  </button>
-                </div>
-              </form>
-
-              <div className={styles.commentList}>
-                {comments.length === 0 ? (
-                  <p className={styles.emptyComments}>{pageCopy.emptyComments}</p>
-                ) : (
-                  comments.map((comment) => (
-                    <article className={styles.commentItem} key={comment.id}>
-                      <div>
-                        <strong>{comment.author_name}</strong>
-                        <time dateTime={comment.created_at}>{formatCommentTime(comment.created_at, locale)}</time>
-                      </div>
-                      <p>{comment.body}</p>
-                    </article>
-                  ))
-                )}
-              </div>
-            </section>
-          </main>
+            {detail?.item.id ? <WritingEngagementSection key={`${locale}:${slug}`} engagement={engagement} locale={locale} /> : null}
+          </div>
 
           <aside className={styles.articleAside}>
             <div className={styles.articleAsidePanel}>
@@ -382,11 +265,11 @@ export function WritingDetailPage() {
                 <div className={styles.articleAsideMeta}>
                   <span>
                     <MessageCircle aria-hidden="true" size={14} />
-                    {comments.length}
+                    {engagement.data?.comment_count ?? "—"}
                   </span>
                   <span>
                     <Heart aria-hidden="true" size={14} />
-                    {engagement.like_count}
+                    {engagement.data?.like_count ?? "—"}
                   </span>
                 </div>
               </div>
@@ -495,32 +378,6 @@ function uniqueHeadingID(title: string, index: number, usedIDs: Map<string, numb
   const count = usedIDs.get(base) ?? 0;
   usedIDs.set(base, count + 1);
   return count === 0 ? base : `${base}-${count + 1}`;
-}
-
-function likedStorageKey(id: number) {
-  return `portfolio-writing-liked-${id}`;
-}
-
-function isWritingLiked(id: number) {
-  return window.localStorage.getItem(likedStorageKey(id)) === "true";
-}
-
-function normalizeEngagement(value: Partial<WritingEngagement>): WritingEngagement {
-  return {
-    comments: value.comments ?? [],
-    like_count: value.like_count ?? 0,
-  };
-}
-
-function formatCommentTime(value: string, locale: Locale) {
-  if (!value) {
-    return "";
-  }
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
 }
 
 function formatPublishedDate(value: string | null | undefined, locale: Locale) {

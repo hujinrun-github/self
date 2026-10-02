@@ -1,5 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
+// JSDOM has no text layout. CodeMirror still measures ranges for its selection layer.
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+}
+if (!Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+
 if (!window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {
     configurable: true,

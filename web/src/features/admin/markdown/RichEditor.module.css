@@ -1,0 +1,328 @@
+.host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+  color: var(--editor-ink, #21314c);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c8d3e1 transparent;
+}
+
+.host > [data-rich-mount],
+.host > [data-rich-mount] > div,
+.host :global(.milkdown) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.host :global(.milkdown) :global(.ProseMirror) {
+  flex: 1;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 824px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 28px 32px 100px;
+  border: 0;
+  background: #fff;
+  color: #354660;
+  font-family: "Avenir Next", "PingFang SC", "Segoe UI", sans-serif;
+  font-size: var(--rich-font-size, 16px);
+  line-height: 1.9;
+  font-variant-ligatures: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  caret-color: #3565c9;
+  outline: none;
+  tab-size: 2;
+}
+
+.host :global(.milkdown) :global(.ProseMirror:focus-visible) {
+  outline: none;
+}
+
+.host :global(.ProseMirror)::selection,
+.host :global(.ProseMirror) ::selection {
+  color: inherit;
+  background: #dce8fb;
+}
+
+.host :global(.ProseMirror) > :first-child {
+  margin-top: 0;
+}
+
+.host :global(.ProseMirror) p {
+  margin: 0 0 1em;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.host :global(.ProseMirror) :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.55em 0 .6em;
+  color: var(--editor-ink, #21314c);
+  font-family: inherit;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -.025em;
+  scroll-margin-top: 24px;
+}
+
+.host :global(.ProseMirror) h1 { font-size: 2em; }
+.host :global(.ProseMirror) h2 { font-size: 1.6em; }
+.host :global(.ProseMirror) h3 { font-size: 1.3em; }
+.host :global(.ProseMirror) h4 { font-size: 1.12em; }
+.host :global(.ProseMirror) :is(h5, h6) { font-size: 1em; }
+
+.host :global(.ProseMirror) strong { font-weight: 700; }
+.host :global(.ProseMirror) em { font-style: italic; }
+.host :global(.ProseMirror) del { color: #8190a3; }
+
+.host :global(.ProseMirror) a {
+  color: var(--editor-blue, #3565c9);
+  text-decoration: underline;
+  text-decoration-color: #a8bde8;
+  text-underline-offset: 4px;
+}
+
+.host :global(.ProseMirror) a:hover { text-decoration-color: currentColor; }
+
+.host :global(.ProseMirror) :is(ul, ol) {
+  margin: 0 0 1em;
+  padding-left: 1.6em;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.host :global(.ProseMirror) ul { list-style: disc; }
+.host :global(.ProseMirror) ol { list-style: decimal; }
+.host :global(.ProseMirror) li { margin: .3em 0; padding-left: .15em; }
+.host :global(.ProseMirror) li::marker { color: #8296b6; }
+.host :global(.ProseMirror) li > p { margin: 0 0 .3em; }
+.host :global(.ProseMirror) li :is(ul, ol) { margin-bottom: .3em; }
+
+.host :global(.ProseMirror) li[data-item-type="task"] {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 9px;
+  margin-left: -1.4em;
+  padding-left: 0;
+  list-style: none;
+}
+
+.host :global(.ProseMirror) [data-task-content] { min-width: 0; }
+.host :global(.ProseMirror) [data-task-content] > p { margin: 0 0 .3em; }
+
+.host :global(.ProseMirror) li[data-item-type="task"] > input[type="checkbox"] {
+  box-sizing: border-box;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: calc((1.9em - 16px) / 2) 0 0;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: #3565c9;
+  cursor: pointer;
+}
+
+.host :global(.ProseMirror) li[data-checked="true"] > [data-task-content] > p {
+  color: #7d8da3;
+}
+
+.host :global(.ProseMirror) li[data-item-type="task"] > input[type="checkbox"]:focus-visible {
+  outline: 3px solid #a8c4ec;
+  outline-offset: 3px;
+}
+
+.host :global(.ProseMirror) blockquote {
+  margin: 1.25em 0;
+  padding: 12px 18px;
+  border: 0;
+  border-left: 3px solid #7295d7;
+  border-radius: 0 7px 7px 0;
+  background: #f5f7fb;
+  color: #61728b;
+  font-size: inherit;
+}
+
+.host :global(.ProseMirror) blockquote > :last-child { margin-bottom: 0; }
+
+.host :global(.ProseMirror) code {
+  padding: .15em .3em;
+  border: 0;
+  border-radius: 4px;
+  background: #edf2fa;
+  color: #496182;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: .86em;
+}
+
+.host :global(.ProseMirror) pre {
+  position: relative;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.25em 0;
+  padding: 17px 19px;
+  border: 1px solid #e1e7ef;
+  border-radius: 9px;
+  background: #f5f7fb;
+  color: #374c69;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: .85em;
+  line-height: 1.75;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.host :global(.ProseMirror) pre[data-language]:not([data-language=""])::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 11px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e7f0;
+  color: #8797af;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.host :global(.ProseMirror) pre code {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.host :global(.ProseMirror) :global(.tableWrapper) {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.25em 0;
+}
+
+.host :global(.ProseMirror) table {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.25em 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: .875em;
+  line-height: 1.65;
+  white-space: normal;
+}
+
+.host :global(.ProseMirror) :global(.tableWrapper) table {
+  display: table;
+  margin: 0;
+}
+
+.host :global(.ProseMirror) :is(th, td) {
+  position: relative;
+  min-width: 90px;
+  padding: 10px 13px;
+  border: 1px solid #dce4ef;
+  color: inherit;
+  text-align: left;
+  vertical-align: top;
+}
+
+.host :global(.ProseMirror) th {
+  background: #f3f6fb;
+  color: #445b7c;
+  font-weight: 650;
+}
+
+.host :global(.ProseMirror) :is(th, td) > p { margin: 0; }
+.host :global(.ProseMirror) :global(.selectedCell)::after { position: absolute; z-index: 2; inset: 0; pointer-events: none; content: ""; background: #cfdef96b; }
+.host :global(.ProseMirror) :global(.column-resize-handle) { position: absolute; z-index: 3; top: 0; right: -2px; bottom: -1px; width: 4px; background: #8aaade; pointer-events: none; }
+.host :global(.ProseMirror.resize-cursor) { cursor: col-resize; }
+
+.host :global(.ProseMirror) img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px auto;
+  border-radius: 8px;
+}
+
+.host :global(.ProseMirror) img:global(.ProseMirror-selectednode) {
+  outline: 3px solid #91b3e5;
+  outline-offset: 3px;
+}
+
+.host :global(.ProseMirror) hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid #e1e7ef;
+}
+
+.host :global(.ProseMirror) span[data-type="html"] {
+  padding: 3px 5px;
+  border: 1px solid #e6e1d6;
+  border-radius: 4px;
+  background: #faf7ef;
+  color: #8b7353;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: .85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.host :global(.ProseMirror) :global(.ProseMirror-selectednode) { outline: 2px solid #a2bfe8; outline-offset: 2px; }
+.host :global(.ProseMirror) :global(.ProseMirror-gapcursor::after) { border-top-color: #3565c9; }
+
+.loading {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  padding: 24px;
+  color: #7b8ba2;
+  font-size: 13px;
+  line-height: 1.8;
+  text-align: center;
+}
+
+.error {
+  margin: 18px;
+  padding: 14px 16px;
+  border: 1px solid #ecd8d6;
+  border-radius: 8px;
+  background: #fcf5f4;
+  color: #a14e4e;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .host :global(.milkdown) :global(.ProseMirror) {
+    padding: 20px 18px 72px;
+    font-size: max(16px, var(--rich-font-size, 16px));
+  }
+
+  .host :global(.ProseMirror) h1 { font-size: 1.7em; }
+  .host :global(.ProseMirror) h2 { font-size: 1.45em; }
+  .host :global(.ProseMirror) pre { padding: 14px; }
+  .host :global(.ProseMirror) blockquote { padding: 10px 14px; }
+  .host :global(.ProseMirror) :is(th, td) { min-width: 88px; padding: 8px 10px; }
+}

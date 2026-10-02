@@ -1,7 +1,9 @@
 .prose {
+  min-width: 0;
   color: var(--color-text);
   font-size: 1rem;
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .prose :where(h1, h2, h3) {
@@ -24,4 +26,22 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--radius-card);
+}
+
+@media (max-width: 720px) {
+  .prose pre,
+  .prose table {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .prose table {
+    display: block;
+  }
+
+  .prose pre {
+    white-space: pre;
+    overflow-wrap: normal;
+  }
 }
