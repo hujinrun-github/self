@@ -1,5 +1,5 @@
-import { ArrowRight, FolderCode, NotebookPen, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, FolderCode, LoaderCircle, NotebookPen, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
@@ -7,6 +7,7 @@ import { usePublicPageMeta } from "./head";
 import { PublicLayout } from "./PublicLayout";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import styles from "./Public.module.css";
+import controls from "./CollectionControls.module.css";
 
 type Resource = "projects" | "writing";
 
@@ -74,18 +75,34 @@ type PageCopy = {
 };
 
 export function PublicListPage({ resource }: { resource: Resource }) {
-  const [response, setResponse] = useState<LocalizedListResponse | null>(null);
   const { locale: localeParam } = useParams();
   const location = useLocation();
   const locale = coerceLocale(localeParam);
   const copy = publicLocaleCopy(locale);
   const pageCopy = pageCopyFor(resource, locale);
+  const text = collectionCopy[locale];
+  const endpoint = withLocaleQuery(`/api/site/${resource}`, locale);
+  const [listState, setListState] = useState<{ endpoint: string; response: LocalizedListResponse | null; error: boolean }>({ endpoint: "", response: null, error: false });
+  const [attempt, setAttempt] = useState(0);
+  const [searchState, setSearchState] = useState({ endpoint: "", value: "" });
+  const searchRef = useRef<HTMLInputElement>(null);
+  const response = listState.endpoint === endpoint ? listState.response : null;
+  const error = listState.endpoint === endpoint && listState.error;
+  const loading = !response && !error;
+  const searchValue = searchState.endpoint === endpoint ? searchState.value : "";
+  const query = normalizeSearch(searchValue, locale);
 
   useEffect(() => {
-    apiFetch<LocalizedListResponse>(withLocaleQuery(`/api/site/${resource}`, locale))
-      .then(setResponse)
-      .catch(() => setResponse({ items: [], requested_locale: locale, resolved_locale: locale }));
-  }, [locale, resource]);
+    const controller = new AbortController();
+    apiFetch<LocalizedListResponse>(endpoint, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setListState({ endpoint, response: result, error: false });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setListState({ endpoint, response: null, error: true });
+      });
+    return () => controller.abort();
+  }, [endpoint, attempt]);
 
   const alternates = useMemo(
     () =>
@@ -105,9 +122,41 @@ export function PublicListPage({ resource }: { resource: Resource }) {
   });
 
   const items = response?.items ?? [];
-  const entries = resource === "writing" ? writingEntries(items, locale) : projectEntries(items, locale);
-  const previews = previewCards(items, resource, locale);
+  const matchingItems = items.filter((item) => matchesSearch(item, query, locale));
+  const entries = !response || (items.length > 0 && matchingItems.length === 0)
+    ? []
+    : resource === "writing" ? writingEntries(matchingItems, locale) : projectEntries(matchingItems, locale);
+  const previews = response ? previewCards(items, resource, locale) : [];
   const layoutTestId = resource === "writing" ? "public-writing-layout" : "public-projects-layout";
+  const searchLabel = resource === "writing" ? text.searchWriting : text.searchProjects;
+  const searchPlaceholder = resource === "writing" ? text.writingPlaceholder : text.projectsPlaceholder;
+  const resultID = `${resource}-results`;
+  const collectionControls = <>
+    {loading ? <p className={controls.loading} role="status"><LoaderCircle aria-hidden="true" className={controls.spinner} size={17} />{text.loading}</p> : null}
+    {error ? <div className={controls.error} role="alert">
+      <span>{text.failed}</span>
+      <button className={controls.retry} type="button" onClick={() => {
+        setListState({ endpoint, response: null, error: false });
+        setAttempt((current) => current + 1);
+      }}><RefreshCw aria-hidden="true" size={15} />{text.retry}</button>
+    </div> : null}
+    {response && items.length === 0 ? <p className={styles.muted}>{copy.emptyList}</p> : null}
+    {items.length > 0 ? <div className={controls.toolbar}>
+      <label className={controls.label} htmlFor={`${resource}-search`}>{searchLabel}</label>
+      <div className={controls.searchField} role="search" aria-label={searchLabel}>
+        <Search aria-hidden="true" className={controls.searchIcon} size={18} />
+        <input aria-controls={resultID} autoComplete="off" className={controls.input} id={`${resource}-search`} onChange={(event) => setSearchState({ endpoint, value: event.target.value })} placeholder={searchPlaceholder} ref={searchRef} type="search" value={searchValue} />
+        {searchValue ? <button aria-label={text.clear} className={controls.clear} onClick={() => {
+          setSearchState({ endpoint, value: "" });
+          searchRef.current?.focus();
+        }} type="button"><X aria-hidden="true" size={17} /></button> : null}
+      </div>
+      <div role="status" aria-atomic="true">
+        <p className={controls.count}>{text.count(matchingItems.length, items.length, resource)}</p>
+        {matchingItems.length === 0 ? <p className={controls.noResults}>{text.noMatches}</p> : null}
+      </div>
+    </div> : null}
+  </>;
 
   return (
     <PublicLayout>
@@ -162,8 +211,8 @@ export function PublicListPage({ resource }: { resource: Resource }) {
               <SectionHeading icon={<NotebookPen aria-hidden="true" size={18} />} title={pageCopy.sectionTitle} />
               <p className={styles.panelLead}>{pageCopy.collectionLead}</p>
               <p className={styles.bodyText}>{pageCopy.collectionSupport}</p>
-              {items.length === 0 ? <p className={styles.muted}>{copy.emptyList}</p> : null}
-              <div className={styles.editorialList} data-testid="public-writing-list">
+              {collectionControls}
+              <div aria-busy={loading} className={`${styles.editorialList} ${response ? controls.results : ""}`} data-testid="public-writing-list" id={resultID}>
                 {entries.map((entry, index) => (
                   <WritingEntryCard
                     entry={entry}
@@ -201,9 +250,9 @@ export function PublicListPage({ resource }: { resource: Resource }) {
           </div>
           <p className={styles.panelLead}>{pageCopy.collectionLead}</p>
           <p className={styles.bodyText}>{pageCopy.collectionSupport}</p>
-          {items.length === 0 ? <p className={styles.muted}>{copy.emptyList}</p> : null}
+          {collectionControls}
 
-          <div className={styles.projectGrid} data-testid="public-project-grid">
+          <div aria-busy={loading} className={`${styles.projectGrid} ${response ? controls.results : ""}`} data-testid="public-project-grid" id={resultID}>
             {entries.map((entry) => (
               <ProjectShowcaseCard
                 entry={entry}
@@ -242,6 +291,32 @@ export function PublicListPage({ resource }: { resource: Resource }) {
       )}
     </PublicLayout>
   );
+}
+
+const collectionCopy = {
+  zh: {
+    searchWriting: "搜索文章", searchProjects: "搜索项目", writingPlaceholder: "搜索标题、摘要或标签", projectsPlaceholder: "搜索标题、摘要或技术", clear: "清空搜索", loading: "正在加载内容…", failed: "内容暂时无法加载，请重试。", retry: "重新加载", noMatches: "没有找到匹配内容，试试其他关键词。",
+    count: (matched: number, total: number, resource: Resource) => `显示 ${matched} / ${total} ${resource === "writing" ? "篇文章" : "个项目"}`,
+  },
+  en: {
+    searchWriting: "Search writing", searchProjects: "Search projects", writingPlaceholder: "Search titles, summaries, or tags", projectsPlaceholder: "Search titles, summaries, or technologies", clear: "Clear search", loading: "Loading content…", failed: "Content could not be loaded. Please try again.", retry: "Reload content", noMatches: "No matches. Try another keyword.",
+    count: (matched: number, total: number, resource: Resource) => `${matched} / ${total} ${resource === "writing" ? "articles" : "projects"}`,
+  },
+  ja: {
+    searchWriting: "記事を検索", searchProjects: "プロジェクトを検索", writingPlaceholder: "タイトル・概要・タグで検索", projectsPlaceholder: "タイトル・概要・技術で検索", clear: "検索をクリア", loading: "コンテンツを読み込み中…", failed: "コンテンツを読み込めませんでした。もう一度お試しください。", retry: "再読み込み", noMatches: "一致する内容がありません。別のキーワードをお試しください。",
+    count: (matched: number, total: number, resource: Resource) => `${resource === "writing" ? "記事" : "プロジェクト"} ${matched} / ${total} 件`,
+  },
+};
+
+function normalizeSearch(value: string, locale: Locale) {
+  return value.normalize("NFKC").toLocaleLowerCase(locale).trim();
+}
+
+function matchesSearch(item: Item, query: string, locale: Locale) {
+  if (!query) return true;
+  const terms = [...(item.tags ?? []), ...(item.techs ?? [])].flatMap((term) => [term.name, term.slug]);
+  const searchable = normalizeSearch([item.title, item.excerpt, item.summary, ...terms].filter(Boolean).join(" "), locale);
+  return query.split(/\s+/).every((word) => searchable.includes(word));
 }
 
 function WritingEntryCard({

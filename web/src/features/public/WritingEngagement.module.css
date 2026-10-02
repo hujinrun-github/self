@@ -43,6 +43,24 @@
 .section button:focus-visible, .section input:focus-visible, .section textarea:focus-visible { outline: 3px solid #3565c944; outline-offset: 3px; }
 .detailError { padding: 16px 0; color: #a03c45; font-size: 14px; }
 .detailError button { margin-left: 12px; border: 1px solid #d5dfed; border-radius: 6px; padding: 6px 10px; color: inherit; background: #fff; font: inherit; cursor: pointer; }
+
+.like, .submit, .more, .error button, .detailError button {
+  transition: transform var(--motion-fast) var(--ease-out), background-color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), opacity var(--motion-fast) var(--ease-standard);
+}
+.like:not(:disabled):active, .submit:not(:disabled):active, .more:not(:disabled):active, .error button:not(:disabled):active, .detailError button:not(:disabled):active { transform: scale(.97); }
+.form input, .form textarea { transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
+.form input:focus, .form textarea:focus { border-color: var(--public-blue, #3565c9); box-shadow: 0 0 0 3px #3565c910; }
+.likeConfirmed { animation: like-confirmed 320ms var(--ease-out); transform-origin: center; }
+.spinner { animation: engagement-spin 800ms linear infinite; flex-shrink: 0; }
+.success { animation: feedback-in var(--motion-normal) var(--ease-out); }
+@keyframes engagement-spin { to { transform: rotate(360deg); } }
+@keyframes like-confirmed { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.2); } }
+@keyframes feedback-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (hover: hover) and (pointer: fine) {
+  .submit:not(:disabled):hover { background: #2d59b5; border-color: #2d59b5; }
+  .error button:not(:disabled):hover, .detailError button:not(:disabled):hover { background: #fff7f8; border-color: #d4adb4; }
+  .form input:not(:disabled):not(:focus):hover, .form textarea:not(:disabled):not(:focus):hover { border-color: #9fb4d3; }
+}
 @media (max-width: 520px) { .summary { gap: 9px 15px; } .metric { font-size: 11px; } .section { margin-top: 34px; } .form { padding: 17px; } .header { gap: 12px; } .header h2 { font-size: 22px; } .like { padding-inline: 10px; gap: 5px; } .name { max-width: none; } }
 @media (max-width: 520px) { .form input, .form textarea { font-size: 16px; } }
 @media (max-width: 720px) {

@@ -381,7 +381,7 @@ describe("public locale routes", () => {
     renderWithApp(<RouterProvider router={memoryRouter} />);
 
     expect(await screen.findByRole("heading", { name: "プロジェクト" })).toBeInTheDocument();
-    expect(screen.getByText("公開済みの項目はまだありません。")).toBeInTheDocument();
+    expect(await screen.findByText("公開済みの項目はまだありません。")).toBeInTheDocument();
   });
 
   it("renders a structured editorial layout for writing routes", async () => {

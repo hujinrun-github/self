@@ -12,6 +12,8 @@ import styles from "./Public.module.css";
 import { WritingEngagementSection, WritingEngagementSummary } from "./WritingEngagement";
 import { useWritingEngagement } from "./WritingEngagementState";
 import engagementStyles from "./WritingEngagement.module.css";
+import readingStyles from "./ReadingProgress.module.css";
+import { useReadingProgress } from "./useReadingProgress";
 
 type Term = {
   name?: string;
@@ -64,6 +66,7 @@ type DetailCopy = {
   likeLabel: string;
   moreWriting: string;
   reading: string;
+  readingProgress: string;
   tags: string;
   toc: string;
 };
@@ -84,6 +87,7 @@ const detailCopy: Record<Locale, DetailCopy> = {
     likeLabel: "点赞",
     moreWriting: "更多文章",
     reading: "正在阅读",
+    readingProgress: "阅读进度",
     tags: "标签",
     toc: "目录",
   },
@@ -96,6 +100,7 @@ const detailCopy: Record<Locale, DetailCopy> = {
     likeLabel: "Like",
     moreWriting: "More writing",
     reading: "Reading",
+    readingProgress: "Reading progress",
     tags: "Tags",
     toc: "Contents",
   },
@@ -108,6 +113,7 @@ const detailCopy: Record<Locale, DetailCopy> = {
     likeLabel: "いいね",
     moreWriting: "他の記事",
     reading: "閲覧中",
+    readingProgress: "読書の進捗",
     tags: "タグ",
     toc: "目次",
   },
@@ -120,6 +126,7 @@ export function WritingDetailPage() {
   const copy = publicLocaleCopy(locale);
   const pageCopy = detailCopy[locale];
   const mobileContentsRef = useRef<HTMLDetailsElement>(null);
+  const articleBodyRef = useRef<HTMLDivElement>(null);
   const detailEndpoint = withLocaleQuery(`/api/site/writing/${slug}`, locale);
 
   const [detailState, setDetailState] = useState<{ endpoint: string; detail: WritingDetailResponse | null; error: "notFound" | "failed" | null }>({ endpoint: "", detail: null, error: null });
@@ -167,6 +174,12 @@ export function WritingDetailPage() {
   const publishedDate = formatPublishedDate(detail?.item.published_at, locale);
   const contentMarkdown = detail?.item.content_md ?? "";
   const tocItems = useMemo(() => extractTableOfContents(contentMarkdown), [contentMarkdown]);
+  const { progress, activeHeadingID } = useReadingProgress(articleBodyRef, `${detailEndpoint}:${contentMarkdown}`);
+  const articleContent = useMemo(() => <MarkdownView
+    headingIDs={tocItems.map((item) => item.id)}
+    markdown={contentMarkdown}
+    media={detail?.item.media ?? {}}
+  />, [contentMarkdown, detail?.item.media, tocItems]);
 
   usePublicPageMeta({
     alternates: (detail?.alternates ?? []).map((alternate) => ({
@@ -181,6 +194,14 @@ export function WritingDetailPage() {
 
   return (
     <PublicLayout alternates={detail?.alternates}>
+      {detail?.item.id && contentMarkdown.trim() ? <div
+        aria-label={pageCopy.readingProgress}
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={progress}
+        className={readingStyles.track}
+        role="progressbar"
+      ><span className={readingStyles.fill} style={{ transform: `scaleX(${progress / 100})` }} /></div> : null}
       <article className={`${styles.section} ${styles.articleSection}`}>
         <div className={styles.articleLayout}>
           <div className={styles.articleMain}>
@@ -236,7 +257,7 @@ export function WritingDetailPage() {
                     <a href="#article-comments">{pageCopy.jumpComments}</a>
                   </div>
                   {tocItems.map((item) => (
-                    <a className={`${styles.tocLink} ${tocDepthClassName(item.depth)}`} href={`#${item.id}`} key={item.id}>
+                    <a aria-current={activeHeadingID === item.id ? "location" : undefined} className={`${styles.tocLink} ${tocDepthClassName(item.depth)} ${readingStyles.tocLink}`} href={`#${item.id}`} key={item.id}>
                       {item.title}
                     </a>
                   ))}
@@ -244,12 +265,8 @@ export function WritingDetailPage() {
               </details>
             ) : null}
 
-            <div className={styles.articleBody} id="article-body">
-              <MarkdownView
-                headingIDs={tocItems.map((item) => item.id)}
-                markdown={contentMarkdown}
-                media={detail?.item.media ?? {}}
-              />
+            <div className={styles.articleBody} id="article-body" ref={articleBodyRef}>
+              {articleContent}
             </div>
 
             {detail?.item.id ? <WritingEngagementSection key={`${locale}:${slug}`} engagement={engagement} locale={locale} /> : null}
@@ -288,7 +305,7 @@ export function WritingDetailPage() {
                   <p className={styles.sectionIndex}>{pageCopy.toc}</p>
                   <nav aria-label={pageCopy.toc}>
                     {tocItems.map((item) => (
-                      <a className={`${styles.tocLink} ${tocDepthClassName(item.depth)}`} href={`#${item.id}`} key={item.id}>
+                      <a aria-current={activeHeadingID === item.id ? "location" : undefined} className={`${styles.tocLink} ${tocDepthClassName(item.depth)} ${readingStyles.tocLink}`} href={`#${item.id}`} key={item.id}>
                         {item.title}
                       </a>
                     ))}

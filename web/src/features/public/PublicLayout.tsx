@@ -1,6 +1,6 @@
 import { Menu, X } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigationType, useParams } from "react-router-dom";
 
 import { coerceLocale, publicLocaleCopy, supportedLocales, withLocale } from "./locale";
 import styles from "./Public.module.css";
@@ -12,17 +12,35 @@ type LocaleLink = {
 
 export function PublicLayout({ alternates, children }: { alternates?: LocaleLink[]; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 820px), (max-height: 500px) and (pointer: coarse)").matches);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const { locale: localeParam } = useParams();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const locale = coerceLocale(localeParam);
   const copy = publicLocaleCopy(locale);
   const localeLinks = alternates ?? supportedLocales.map((targetLocale) => ({
     locale: targetLocale,
     path: withLocale(targetLocale, stripLocalePrefix(location.pathname)),
   }));
+
+  useLayoutEffect(() => {
+    if (navigationType !== "POP" && !location.hash) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [location.pathname, location.hash, navigationType]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 820px), (max-height: 500px) and (pointer: coarse)");
+    const updateLayout = (event: MediaQueryListEvent) => {
+      setCompact(event.matches);
+      if (!event.matches) setOpen(false);
+    };
+    query.addEventListener("change", updateLayout);
+    return () => query.removeEventListener("change", updateLayout);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +84,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
             >
               {open ? <X aria-hidden="true" size={18} /> : <Menu aria-hidden="true" size={18} />}
             </button>
-            <nav aria-label="Primary" className={styles.nav} data-open={open} id="public-navigation">
+            <nav aria-label="Primary" className={styles.nav} data-open={open} id="public-navigation" inert={compact && !open}>
               <Link aria-current={isActivePath(location.pathname, withLocale(locale, "/")) ? "page" : undefined} className={isActivePath(location.pathname, withLocale(locale, "/")) ? styles.navLinkActive : ""} onClick={() => setOpen(false)} to={withLocale(locale, "/")}>
                 {copy.home}
               </Link>

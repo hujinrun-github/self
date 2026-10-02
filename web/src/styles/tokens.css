@@ -19,4 +19,9 @@
   --space-4: 16px;
   --space-6: 24px;
   --space-8: 32px;
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
+  --motion-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }

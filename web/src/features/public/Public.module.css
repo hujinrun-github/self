@@ -147,6 +147,7 @@
   font-weight: 600;
   text-decoration: none;
   border-radius: 5px;
+  transition: color var(--motion-fast) ease, background var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 
 .localeLink:hover {
@@ -170,6 +171,7 @@
   border-radius: 9px;
   color: var(--public-ink);
   cursor: pointer;
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) var(--ease-out);
 }
 
 .main {
@@ -2112,7 +2114,12 @@
     top: 71px;
     right: 0;
     left: 0;
-    display: none;
+    display: grid;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: opacity var(--motion-normal) ease, transform var(--motion-normal) var(--ease-out), visibility 0s var(--motion-normal);
     max-height: calc(100dvh - 72px);
     overscroll-behavior-y: contain;
     justify-content: stretch;
@@ -2125,7 +2132,11 @@
     box-shadow: 0 16px 28px -16px rgba(33, 49, 76, 0.2);
   }
   .nav[data-open="true"] {
-    display: grid;
+    visibility: visible;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition-delay: 0s;
   }
 
   .nav a {
@@ -2275,11 +2286,22 @@
   }
 
   .mobileArticleContents nav {
+    position: absolute;
+    top: 100%;
+    right: -1px;
+    left: -1px;
     max-height: min(55dvh, 400px);
     overflow-y: auto;
     overscroll-behavior-y: contain;
     padding: 6px 14px 12px;
-    border-top: 1px solid var(--public-line);
+    background: #ffffff;
+    border: 1px solid var(--public-line);
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 12px 20px -12px rgb(33 49 76 / 20%);
+  }
+
+  .mobileArticleContents[open] {
+    border-radius: 10px 10px 0 0;
   }
 
   .mobileArticleContents .tocLink {
@@ -2758,6 +2780,98 @@
     grid-template-columns: 1fr;
   }
 
+}
+
+/* One entrance on the home page; the rest of the motion answers an action. */
+@keyframes homeIntroduction {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes atlasAssemble {
+  from { opacity: 0; transform: scale(0.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes menuIconEnter {
+  from { opacity: 0; transform: rotate(-35deg) scale(0.8); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
+}
+
+.homeHeroCopy {
+  animation: homeIntroduction var(--motion-slow) var(--ease-out) both;
+}
+
+.homeHero .heroPanel {
+  animation: homeIntroduction 560ms var(--ease-out) 70ms both;
+}
+
+.atlasNode {
+  animation: atlasAssemble var(--motion-slow) var(--ease-out) 160ms both;
+}
+
+.atlasNode:nth-child(2) { animation-delay: 240ms; }
+.atlasNode:nth-child(3) { animation-delay: 320ms; }
+
+.menuButton svg {
+  animation: menuIconEnter var(--motion-normal) var(--ease-out);
+}
+
+.button svg,
+.lightButton svg,
+.heroScroll svg,
+.editorialItem > svg,
+.projectVisual > span,
+.contentsChevron {
+  transition: transform var(--motion-normal) var(--ease-out);
+}
+
+.socialCard {
+  transition: border-color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+
+.button:active,
+.secondaryButton:active,
+.lightButton:active,
+.menuButton:active {
+  transform: scale(0.97);
+}
+
+.nav a:active,
+.localeLink:active {
+  background: var(--public-surface-strong);
+}
+
+.editorialItem:focus-visible,
+.editorialItem:active {
+  background: #edf2fa;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:hover svg,
+  .lightButton:hover svg,
+  .editorialItem:hover > svg {
+    transform: translate(2px, -2px);
+  }
+
+  .heroScroll:hover svg {
+    transform: translate(2px, 3px);
+  }
+
+  a.projectCard:hover .projectVisual > span,
+  .projectCard:has(a:hover) .projectVisual > span {
+    transform: scale(1.06);
+  }
+
+  a.socialCard:hover {
+    border-color: #b9cae8;
+    background: var(--public-surface);
+  }
+
+  .menuButton:hover {
+    background: var(--public-surface);
+    border-color: #b9cae8;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

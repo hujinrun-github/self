@@ -37,6 +37,7 @@ export function WritingEngagementSection({ engagement, locale }: Props) {
   const text = copy[locale];
   const [authorName, setAuthorName] = useState("");
   const [body, setBody] = useState("");
+  const [likeRequested, setLikeRequested] = useState(false);
   const data = engagement.data;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -50,12 +51,12 @@ export function WritingEngagementSection({ engagement, locale }: Props) {
   return <section className={styles.section} id="article-comments" aria-label={text.activity}>
     <header className={styles.header}>
       <div><h2>{text.comments} <span>{data?.comment_count ?? "—"}</span></h2><p>{text.title}</p></div>
-      <button aria-pressed={data?.liked ?? false} aria-label={`${data?.liked ? text.unlike : text.like} ${data?.like_count ?? "—"}`} className={styles.like} disabled={!data || engagement.liking} onClick={() => void engagement.toggleLike()} type="button">
-        {engagement.liking ? <LoaderCircle size={18} aria-hidden="true" /> : <Heart size={18} aria-hidden="true" fill={data?.liked ? "currentColor" : "none"} />}<span>{data?.liked ? text.unlike : text.like}</span><strong>{data?.like_count ?? "—"}</strong>
+      <button aria-pressed={data?.liked ?? false} aria-busy={engagement.liking} aria-label={`${data?.liked ? text.unlike : text.like} ${data?.like_count ?? "—"}`} className={styles.like} disabled={!data || engagement.liking} onClick={() => { setLikeRequested(!data?.liked); void engagement.toggleLike(); }} type="button">
+        {engagement.liking ? <LoaderCircle className={styles.spinner} size={18} aria-hidden="true" /> : <Heart className={likeRequested && data?.liked && !engagement.likeError ? styles.likeConfirmed : undefined} size={18} aria-hidden="true" fill={data?.liked ? "currentColor" : "none"} />}<span>{data?.liked ? text.unlike : text.like}</span><strong>{data?.like_count ?? "—"}</strong>
       </button>
     </header>
     <p className={styles.countNote}><Eye size={14} aria-hidden="true" />{text.note}</p>
-    {engagement.loadError ? <div className={styles.error} role="alert"><span>{text.loadError}</span><button onClick={() => void engagement.reload()} type="button"><RefreshCw size={14} aria-hidden="true" />{text.reload}</button></div> : null}
+    {engagement.loadError ? <div className={styles.error} role="alert"><span>{text.loadError}</span><button aria-busy={engagement.loading} disabled={engagement.loading} onClick={() => void engagement.reload()} type="button"><RefreshCw size={14} aria-hidden="true" />{text.reload}</button></div> : null}
     {engagement.loading ? <p className={styles.loading}>{text.loading}</p> : null}
     {engagement.likeError ? <p className={styles.error} role="alert">{text.likeError}</p> : null}
     {engagement.viewError ? <div className={styles.error} role="alert"><span>{text.viewError}</span><button onClick={() => void engagement.registerView()} type="button">{text.retryView}</button></div> : null}
@@ -64,7 +65,7 @@ export function WritingEngagementSection({ engagement, locale }: Props) {
       <p className={styles.moderation}><ShieldCheck size={15} aria-hidden="true" />{text.moderation}</p>
       <label className={styles.name}><span>{text.name}</span><input autoComplete="nickname" maxLength={80} value={authorName} placeholder={text.namePlaceholder} onChange={(event) => setAuthorName(event.target.value)} required disabled={engagement.submitting} /></label>
       <label><span>{text.body}</span><textarea rows={4} maxLength={1000} value={body} placeholder={text.bodyPlaceholder} onChange={(event) => setBody(event.target.value)} required disabled={engagement.submitting} /></label>
-      <div className={styles.formFooter}><span className={styles.length}>{Array.from(body).length} / 1000</span><button className={styles.submit} type="submit" disabled={!data || engagement.submitting}><Send size={15} aria-hidden="true" />{engagement.submitting ? text.sending : text.submit}</button></div>
+      <div className={styles.formFooter}><span className={styles.length}>{Array.from(body).length} / 1000</span><button className={styles.submit} type="submit" aria-busy={engagement.submitting} disabled={!data || engagement.submitting}>{engagement.submitting ? <LoaderCircle className={styles.spinner} size={15} aria-hidden="true" /> : <Send size={15} aria-hidden="true" />}{engagement.submitting ? text.sending : text.submit}</button></div>
       {engagement.commentSent ? <p className={styles.success} role="status"><CheckCircle2 size={16} aria-hidden="true" />{text.success}</p> : null}
       {engagement.commentError ? <p className={styles.error} role="alert">{text.commentError}</p> : null}
     </form>
@@ -76,7 +77,7 @@ export function WritingEngagementSection({ engagement, locale }: Props) {
       </article>) : <p className={styles.empty}>{text.empty}</p>}
     </div> : null}
     {engagement.pageError ? <p className={styles.error} role="alert">{text.pageError}</p> : null}
-    {data?.has_more ? <button className={styles.more} type="button" onClick={() => void engagement.loadMore()} disabled={engagement.loadingMore}>{engagement.loadingMore ? text.loadingMore : text.more}</button> : null}
+    {data?.has_more ? <button className={styles.more} type="button" aria-busy={engagement.loadingMore} onClick={() => void engagement.loadMore()} disabled={engagement.loadingMore}>{engagement.loadingMore ? <LoaderCircle className={styles.spinner} size={15} aria-hidden="true" /> : null}{engagement.loadingMore ? text.loadingMore : text.more}</button> : null}
   </section>;
 }
 

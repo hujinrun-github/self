@@ -1,11 +1,14 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { PublicLayout } from "./PublicLayout";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function renderLayout(path = "/en/projects/example") {
   return render(
@@ -18,6 +21,18 @@ function renderLayout(path = "/en/projects/example") {
 }
 
 describe("public layout keyboard navigation", () => {
+  it("starts a newly opened page at the top without animating the old scroll position", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderLayout();
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Writing" }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: "instant" });
+    scrollTo.mockRestore();
+  });
+
   it("connects the menu toggle to its navigation and closes it with Escape", async () => {
     const user = userEvent.setup();
     renderLayout();
