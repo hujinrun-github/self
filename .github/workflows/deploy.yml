@@ -54,6 +54,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Pin npm
+        run: npm install --global npm@11.19.0
+
       - name: Install web dependencies
         run: npm --prefix web ci
 
