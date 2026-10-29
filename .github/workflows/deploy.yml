@@ -58,7 +58,7 @@ jobs:
         run: npm install --global npm@11.19.0
 
       - name: Install web dependencies
-        run: npm --prefix web ci
+        run: npm --prefix web ci --no-audit --no-fund
 
       - name: Run Go tests
         run: go test ./cmd/server ./internal/config ./internal/db ./internal/httpserver ./internal/auth ./internal/site ./internal/profile ./internal/content ./internal/media ./internal/backup ./cmd/migrate-sqlite-to-postgres -count=1

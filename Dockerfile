@@ -4,7 +4,7 @@ WORKDIR /src
 
 COPY web/package.json web/package-lock.json ./web/
 RUN npm install --global npm@11.19.0
-RUN npm --prefix web ci
+RUN npm --prefix web ci --no-audit --no-fund
 
 COPY web/ ./web/
 RUN npm --prefix web run build
