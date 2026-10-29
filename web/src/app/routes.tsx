@@ -1,4 +1,5 @@
-import { createBrowserRouter, Navigate, Outlet, redirect, useParams, type LoaderFunctionArgs } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet, redirect, type LoaderFunctionArgs } from "react-router-dom";
+import { LegacyJournalRedirect, LegacySlugRedirect, LocaleHomeRedirect } from './LegacyRedirects';
 
 import { AdminLayout } from "../features/admin/AdminLayout";
 import { ContentEditPage } from "../features/admin/ContentEditPage";
@@ -7,6 +8,9 @@ import { EngagementPage } from "../features/admin/EngagementPage";
 import { MediaPage } from "../features/admin/MediaPage";
 import { ProfilePage } from "../features/admin/ProfilePage";
 import { LoginPage } from "../features/auth/LoginPage";
+import { JournalAdminPage } from "../features/journal/JournalAdminPage";
+import { JournalEntryPage } from "../features/journal/JournalEntryPage";
+import { JournalPublicPage } from "../features/journal/JournalPublicPage";
 import { HomePage } from "../features/public/HomePage";
 import { BioPage, ContactPage } from "../features/public/ProfilePages";
 import { ProjectDetailPage } from "../features/public/ProjectDetailPage";
@@ -24,6 +28,8 @@ export const publicRoutes = [
   { element: <Navigate replace to="/zh/projects" />, path: "/projects" },
   { element: <LegacySlugRedirect resource="projects" />, path: "/projects/:slug" },
   { element: <Navigate replace to="/zh/contact" />, path: "/contact" },
+  { element: <Navigate replace to="/zh/journal" />, path: "/journal" },
+  { element: <LegacyJournalRedirect />, path: "/journal/:notebookId" },
   {
     element: <Outlet />,
     loader: localeLoader,
@@ -38,6 +44,9 @@ export const publicRoutes = [
       { element: <PublicListPage resource="projects" />, path: "projects" },
       { element: <ProjectDetailPage />, path: "projects/:slug" },
       { element: <ContactPage />, path: "contact" },
+      { element: <JournalPublicPage />, path: "journal" },
+      { element: <JournalPublicPage />, path: "journal/:notebookId" },
+      { element: <JournalPublicPage immersive />, path: "journal/:notebookId/read" },
     ],
   },
 ];
@@ -66,21 +75,14 @@ export const routes = [
       { element: <ContentEditPage resource="projects" />, path: "projects/:id" },
       { element: <ContentEditPage resource="preview" />, path: "preview/:resource/:id" },
       { element: <MediaPage />, path: "media" },
+      { element: <JournalAdminPage />, path: "journal" },
+      { element: <JournalEntryPage />, path: "journal/new" },
+      { element: <JournalEntryPage />, path: "journal/entries/:entryId" },
     ],
   },
 ];
 
 export const router = createBrowserRouter(routes);
-
-function LegacySlugRedirect({ resource }: { resource: "projects" | "writing" }) {
-  const { slug = "" } = useParams();
-  return <Navigate replace to={`/zh/${resource}/${slug}`} />;
-}
-
-function LocaleHomeRedirect() {
-  const { locale = "zh" } = useParams();
-  return <Navigate replace to={`/${locale}`} />;
-}
 
 function localeLoader({ params, request }: LoaderFunctionArgs) {
   if (isSupportedLocale(params.locale)) {

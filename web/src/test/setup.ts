@@ -1,5 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 
+// Node 26 defines host storage globals, which Vitest leaves in place instead of
+// JSDOM's origin-scoped stores. Bind the real browser stores for browser tests.
+const browserWindow = (globalThis as typeof globalThis & { jsdom?: { window: Window } }).jsdom?.window;
+if (browserWindow) {
+  for (const key of ["localStorage", "sessionStorage"] as const) {
+    Object.defineProperty(window, key, { configurable: true, value: browserWindow[key] });
+  }
+}
+
 // JSDOM has no scrolling viewport; navigation tests spy on this browser API.
 Object.defineProperty(window, "scrollTo", { configurable: true, value: () => {}, writable: true });
 

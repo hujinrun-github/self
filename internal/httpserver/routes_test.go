@@ -85,7 +85,7 @@ func TestProductionCSPAllowsHTTPSImagesButDisallowsDataImages(t *testing.T) {
 	if csp == "" {
 		t.Fatal("missing Content-Security-Policy")
 	}
-	if !containsDirective(csp, "img-src 'self' https:;") {
+	if !containsDirective(csp, "img-src 'self' https: blob:;") {
 		t.Fatalf("CSP missing HTTPS image directive: %s", csp)
 	}
 	if containsDirective(csp, "data:") {

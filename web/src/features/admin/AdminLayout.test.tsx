@@ -42,7 +42,8 @@ describe("admin layout navigation", () => {
   it("keeps all navigation destinations and reserves the page heading for its content", async () => {
     await renderLayout();
     const navigation = screen.getByRole("navigation", { name: "Admin" });
-    expect(within(navigation).getAllByRole("link")).toHaveLength(7);
+    expect(within(navigation).getAllByRole("link")).toHaveLength(8);
+    expect(within(navigation).getByRole("link", { name: "手帐" })).toHaveAttribute("href", "/admin/journal");
     expect(within(navigation).getByRole("link", { name: "互动" })).toHaveAttribute("href", "/admin/engagement");
     expect(within(navigation).getByRole("link", { name: "资料" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "查看前台" })).toHaveAttribute("href", "/zh");
@@ -159,6 +160,35 @@ describe("admin layout navigation", () => {
 
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.closest("[inert]")).toBeNull();
+  });
+
+  it("keeps the session active until an unsaved editor allows logout", async () => {
+    const user = userEvent.setup();
+    const { fetchMock, router } = await renderLayout();
+    let proceed: (() => Promise<void>) | undefined;
+    const deferLogout = (event: Event) => {
+      event.preventDefault();
+      proceed = (event as CustomEvent<{ proceed: () => Promise<void> }>).detail.proceed;
+    };
+    window.addEventListener("portfolio:before-sign-out", deferLogout);
+    try {
+      await user.click(screen.getByRole("button", { name: "退出登录" }));
+
+      expect(proceed).toBeDefined();
+      expect(router.state.location.pathname).toBe("/admin/profile");
+      expect(screen.getByRole("heading", { name: "编辑资料" })).toBeInTheDocument();
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/admin/logout")).toBe(false);
+
+      await act(async () => { await proceed!(); });
+
+      const logoutCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/admin/logout") as unknown as [string, RequestInit][];
+      expect(logoutCalls).toHaveLength(1);
+      expect(logoutCalls[0][1].method).toBe("POST");
+      expect(new Headers(logoutCalls[0][1].headers).get("X-CSRF-Token")).toBe("layout-test-token");
+      expect(router.state.location.pathname).toBe("/admin/login");
+    } finally {
+      window.removeEventListener("portfolio:before-sign-out", deferLogout);
+    }
   });
 
   it("preserves the session token on logout and redirects to login", async () => {

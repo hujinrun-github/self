@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { JournalHomeSection } from "../journal/JournalHomeSection";
 import { usePublicPageMeta } from "./head";
 import { type Locale, coerceLocale, publicLocaleCopy, withLocale, withLocaleQuery } from "./locale";
 import { ProfileAvatar } from "./ProfileAvatar";
@@ -251,6 +252,8 @@ export function HomePage() {
           </Link>
         </div>
       </section>
+
+      <JournalHomeSection locale={locale} />
 
       <section className={styles.contactBand}>
         <p className={styles.sectionIndex}>{copy.contact}</p>

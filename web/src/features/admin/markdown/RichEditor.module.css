@@ -26,10 +26,10 @@
   flex: 1;
   box-sizing: border-box;
   width: 100%;
-  max-width: 824px;
+  max-width: none;
   min-height: 100%;
-  margin: 0 auto;
-  padding: 28px 32px 100px;
+  margin: 0;
+  padding: 28px clamp(28px, 4vw, 72px) 100px;
   border: 0;
   background: #fff;
   color: #354660;
@@ -146,6 +146,13 @@
 }
 
 .host :global(.ProseMirror) blockquote {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: fit-content;
+  min-height: 0;
+  align-self: flex-start;
   margin: 1.25em 0;
   padding: 12px 18px;
   border: 0;

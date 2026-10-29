@@ -24,7 +24,7 @@ func productionCSP() string {
 		"default-src 'self';",
 		"script-src 'self';",
 		"style-src 'self';",
-		"img-src 'self' https:;",
+		"img-src 'self' https: blob:;",
 		"font-src 'self';",
 		"connect-src 'self';",
 		"frame-ancestors 'none';",
@@ -40,6 +40,11 @@ func containsDirective(csp string, directive string) bool {
 
 func SetCacheHeaders(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	if isJournalPath(path) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		return
+	}
 	switch {
 	case strings.HasPrefix(path, "/api/"):
 		w.Header().Set("Cache-Control", "no-store")
@@ -48,4 +53,13 @@ func SetCacheHeaders(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Cache-Control", "no-cache")
 	}
+}
+
+func isJournalPath(path string) bool {
+	for _, root := range []string{"/journal", "/zh/journal", "/en/journal", "/ja/journal", "/admin/journal", "/api/admin/journal", "/api/site/journal"} {
+		if path == root || strings.HasPrefix(path, root+"/") {
+			return true
+		}
+	}
+	return false
 }

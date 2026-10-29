@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, FileText, FolderKanban, Image, LogOut, Menu, MessageSquare, Mic2, UserRound, X } from "lucide-react";
+import { BriefcaseBusiness, FileText, FolderKanban, Image, LogOut, Menu, MessageSquare, Mic2, NotebookPen, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
@@ -10,6 +10,7 @@ const navItems = [
   { icon: BriefcaseBusiness, label: "经历", to: "/admin/experience" },
   { icon: Mic2, label: "演讲", to: "/admin/talks" },
   { icon: FileText, label: "写作", to: "/admin/writing" },
+  { icon: NotebookPen, label: "手帐", to: "/admin/journal" },
   { icon: MessageSquare, label: "互动", to: "/admin/engagement" },
   { icon: FolderKanban, label: "项目", to: "/admin/projects" },
   { icon: Image, label: "媒体", to: "/admin/media" },
@@ -114,13 +115,23 @@ export function AdminLayout() {
     };
   }, [navigate]);
 
-  async function signOut() {
+  async function completeSignOut() {
     try {
       await apiFetch("/api/admin/logout", { method: "POST" });
     } finally {
       setCSRFToken("");
       navigate("/admin/login", { replace: true });
     }
+  }
+
+  function signOut() {
+    // An editor with unsaved work can finish its save/discard dialog before
+    // the session is invalidated. Pages without a draft use the usual logout.
+    const event = new CustomEvent('portfolio:before-sign-out', {
+      cancelable: true,
+      detail: { proceed: completeSignOut },
+    });
+    if (window.dispatchEvent(event)) void completeSignOut();
   }
 
   if (!ready) {

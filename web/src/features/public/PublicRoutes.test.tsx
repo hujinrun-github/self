@@ -18,6 +18,11 @@ function stubPublicFetch() {
       const rawURL = typeof input === "string" ? input : input.toString();
       const url = new URL(rawURL, "http://localhost");
       const locale = url.searchParams.get("locale") ?? "zh";
+      if (url.pathname === "/api/site/journal/notebooks") {
+        return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+          headers: { "Content-Type": "application/json" }, status: 200,
+        }));
+      }
       if (url.pathname === "/api/site/home") {
         return Promise.resolve(
           new Response(
@@ -159,6 +164,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/home") {
           return Promise.resolve(
             new Response(
@@ -224,6 +234,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/home") {
           return Promise.resolve(
             new Response(
@@ -269,6 +284,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/home") {
           return Promise.resolve(
             new Response(
@@ -325,6 +345,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/home") {
           return Promise.resolve(
             new Response(
@@ -413,6 +438,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/writing/example") {
           return Promise.resolve(
             new Response(
@@ -458,6 +488,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         const method = init?.method ?? "GET";
         if (url.pathname === "/api/site/writing/example/like" && method === "POST") {
           return Promise.resolve(
@@ -572,6 +607,11 @@ describe("public locale routes", () => {
         const rawURL = typeof input === "string" ? input : input.toString();
         const url = new URL(rawURL, "http://localhost");
         const locale = url.searchParams.get("locale") ?? "zh";
+        if (url.pathname === "/api/site/journal/notebooks") {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            headers: { "Content-Type": "application/json" }, status: 200,
+          }));
+        }
         if (url.pathname === "/api/site/profile") {
           return Promise.resolve(
             new Response(

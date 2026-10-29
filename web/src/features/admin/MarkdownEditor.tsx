@@ -93,7 +93,12 @@ export function MarkdownEditor({ description, id, label, onChange, value }: Mark
       preview.scrollTop = scrollRatioRef.current * (preview.scrollHeight - preview.clientHeight);
     }
   }, [previewSource, effectiveMode, followSource]);
-  useModalFocus(fullscreenRef, fullscreen, () => setFullscreen(false), focusEditor);
+  useModalFocus(
+    fullscreenRef,
+    fullscreen,
+    () => setFullscreen(false),
+    () => workspaceHost.querySelector<HTMLButtonElement>("[data-fullscreen-trigger]")?.focus(),
+  );
   useVisibleViewport(fullscreenRef, fullscreen);
 
   function focusEditor() {
@@ -229,7 +234,13 @@ export function MarkdownEditor({ description, id, label, onChange, value }: Mark
           <ToolButton label="文档目录" caption={compact ? "目录" : undefined} icon={PanelLeft} pressed={outlineOpen} onClick={() => setOutlineOpen(!outlineOpen)} />
           <ToolButton label="查找与替换" caption={compact ? "查找" : undefined} icon={Search} shortcut="⌘/Ctrl F" onClick={openSearch} />
           {!compact ? <ToolButton label="导出 Markdown" icon={Download} onClick={exportMarkdown} /> : null}
-          <ToolButton label={fullscreen ? "退出全屏" : "全屏写作"} caption={compact ? fullscreen ? "退出全屏" : "全屏" : undefined} icon={fullscreen ? Minimize2 : Maximize2} onClick={() => setFullscreen(!fullscreen)} />
+          <ToolButton
+            label={fullscreen ? "退出全屏" : "全屏写作"}
+            caption={fullscreen ? "退出全屏" : "全屏写作"}
+            data-fullscreen-trigger=""
+            icon={fullscreen ? Minimize2 : Maximize2}
+            onClick={() => setFullscreen(!fullscreen)}
+          />
         </div>
       </header>
 
@@ -480,7 +491,8 @@ function useModalFocus(ref: RefObject<HTMLDivElement | null>, active: boolean, o
       document.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = previousOverflow;
       inertStates.forEach(({ element, inert }) => { element.inert = inert; });
-      if (previousFocus?.isConnected) previousFocus.focus();
+      if (previousFocus?.isConnected && previousFocus !== document.body)
+        previousFocus.focus();
       else requestAnimationFrame(() => callbacks.current.onRestore?.());
     };
   }, [active, ref]);

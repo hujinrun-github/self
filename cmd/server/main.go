@@ -17,6 +17,7 @@ import (
 	appdb "portfolio/internal/db"
 	"portfolio/internal/health"
 	"portfolio/internal/httpserver"
+	"portfolio/internal/journal"
 	"portfolio/internal/media"
 	"portfolio/internal/profile"
 	"portfolio/internal/site"
@@ -38,6 +39,7 @@ func main() {
 	defer database.Close()
 
 	authService := auth.NewService(database, cfg)
+	journalService := journal.NewService(database, cfg)
 	if err := authService.BootstrapAdmin(context.Background()); err != nil {
 		log.Fatal(err)
 	}
@@ -109,6 +111,7 @@ func main() {
 		authRoutes:    authService.RegisterRoutes,
 		requireAdmin:  authService.RequireAdmin,
 		adminRoutes: []routeRegistrar{
+			journalService.RegisterAdminRoutes,
 			func(r chi.Router) {
 				profile.RegisterAdminRoutes(r, profileRepo, translationService)
 			},
@@ -123,6 +126,7 @@ func main() {
 			},
 		},
 		publicRoutes: []routeRegistrar{
+			journalService.RegisterPublicRoutes,
 			func(r chi.Router) {
 				profile.RegisterSiteRoutes(r, profileRepo)
 			},

@@ -19,16 +19,21 @@ describe("MarkdownEditor", () => {
 
     await screen.findByRole("textbox", { name: "Markdown 正文" }, { timeout: 3000 });
     expect(screen.queryByRole("button", { name: /Toggle fullscreen/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全屏写作" })).toHaveTextContent("全屏写作");
 
     await userEvent.click(screen.getByRole("button", { name: "全屏写作" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Markdown 正文 · 全屏写作" });
     expect(dialog.parentElement).toBe(document.body);
     expect(document.body.style.overflow).toBe("hidden");
+    expect(screen.getByRole("button", { name: "退出全屏" })).toHaveTextContent("退出全屏");
 
-    await userEvent.click(screen.getByRole("button", { name: "退出全屏" }));
+    await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Markdown 正文 · 全屏写作" })).not.toBeInTheDocument();
     expect(document.body.style.overflow).toBe("");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "全屏写作" })).toHaveFocus(),
+    );
   });
 
   it("previews images when pasted markdown splits the label and url across lines", async () => {

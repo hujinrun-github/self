@@ -14,6 +14,7 @@ type PublicCopy = {
   experience: string;
   home: string;
   homeDescription: string;
+  journal: string;
   menuToggle: string;
   notFound: string;
   now: string;
@@ -43,6 +44,7 @@ const publicCopy: Record<Locale, PublicCopy> = {
     experience: "经历",
     home: "首页",
     homeDescription: "精选项目、写作与职业记录。",
+    journal: "手帐",
     menuToggle: "切换导航",
     notFound: "未找到",
     now: "近况",
@@ -71,6 +73,7 @@ const publicCopy: Record<Locale, PublicCopy> = {
     experience: "Experience",
     home: "Home",
     homeDescription: "Selected work, writing, and professional notes.",
+    journal: "Journal",
     menuToggle: "Toggle navigation",
     notFound: "Not found",
     now: "Now",
@@ -99,6 +102,7 @@ const publicCopy: Record<Locale, PublicCopy> = {
     experience: "経歴",
     home: "ホーム",
     homeDescription: "制作物、文章、そして仕事の記録。",
+    journal: "手帳",
     menuToggle: "ナビゲーションを切り替える",
     notFound: "見つかりません",
     now: "最近",

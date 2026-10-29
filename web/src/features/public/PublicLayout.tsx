@@ -108,6 +108,14 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
                 {copy.projects}
               </Link>
               <Link
+                aria-current={isActivePath(location.pathname, withLocale(locale, "/journal")) ? "page" : undefined}
+                className={isActivePath(location.pathname, withLocale(locale, "/journal")) ? styles.navLinkActive : ""}
+                onClick={() => setOpen(false)}
+                to={withLocale(locale, "/journal")}
+              >
+                {copy.journal}
+              </Link>
+              <Link
                 aria-current={isActivePath(location.pathname, withLocale(locale, "/contact")) ? "page" : undefined}
                 className={isActivePath(location.pathname, withLocale(locale, "/contact")) ? styles.navLinkActive : ""}
                 onClick={() => setOpen(false)}
@@ -145,6 +153,7 @@ export function PublicLayout({ alternates, children }: { alternates?: LocaleLink
               <Link aria-label={footerLinkLabel(copy.home, locale)} to={withLocale(locale, "/")}>{copy.home}</Link>
               <Link aria-label={footerLinkLabel(copy.projects, locale)} to={withLocale(locale, "/projects")}>{copy.projects}</Link>
               <Link aria-label={footerLinkLabel(copy.writing, locale)} to={withLocale(locale, "/writing")}>{copy.writing}</Link>
+              <Link aria-label={footerLinkLabel(copy.journal, locale)} to={withLocale(locale, "/journal")}>{copy.journal}</Link>
               <Link aria-label={footerLinkLabel(copy.contact, locale)} to={withLocale(locale, "/contact")}>{copy.contact}</Link>
             </nav>
             <a className={styles.backToTop} href="#top">{backToTopCopy(locale)}</a>

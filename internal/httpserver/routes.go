@@ -111,7 +111,7 @@ func isReservedTopLevelSegment(segment string) bool {
 
 func isLegacyPublicRoot(segment string) bool {
 	switch segment {
-	case "bio", "contact", "projects", "talks", "writing":
+	case "bio", "contact", "projects", "talks", "writing", "journal":
 		return true
 	default:
 		return false

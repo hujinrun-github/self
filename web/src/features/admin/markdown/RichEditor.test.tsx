@@ -90,6 +90,24 @@ describe("RichEditor", () => {
     expect(editor.props.onChange).toHaveBeenCalled();
   });
 
+  it("places a clean paragraph after a final quote when its lower background is clicked", async () => {
+    const editor = await setup({ value: "> 引用内容" });
+    const quote = editor.textbox.querySelector("blockquote")!;
+    vi.spyOn(quote, "getBoundingClientRect").mockReturnValue({
+      bottom: 80, height: 40, left: 0, right: 300, top: 40, width: 300, x: 0, y: 40,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(editor.textbox, { clientY: 180 });
+
+    expect(editor.textbox.lastElementChild).toHaveTextContent("");
+    expect(editor.textbox.lastElementChild?.tagName).toBe("P");
+    expect(editor.props.onChange).not.toHaveBeenCalled();
+    act(() => editor.view().dispatch(editor.view().state.tr.insertText("引用后的正文")));
+    expect(editor.props.onChange).toHaveBeenLastCalledWith(expect.stringContaining("\n\n引用后的正文"));
+    expect(editor.props.onChange).toHaveBeenLastCalledWith(expect.not.stringContaining("> 引用后的正文"));
+  });
+
   it("inserts links into a selection and keeps media protocols when inserting images", async () => {
     const editor = await setup({ value: "hello world" });
     act(() => editor.view().dispatch(editor.view().state.tr.setSelection(TextSelection.create(editor.view().state.doc, 1, 6))));

@@ -181,7 +181,7 @@
   display: grid;
   grid-template-columns: minmax(0,1fr);
   min-width: 0;
-  height: 540px;
+  height: clamp(600px, 70vh, 820px);
   min-height: 0;
 }
 
@@ -326,7 +326,7 @@
 }
 
 .canvas[data-mode="preview"] .previewScroll {
-  padding-inline: max(28px, calc((100% - 760px) / 2));
+  padding-inline: clamp(28px, 4vw, 72px);
 }
 
 .workspace .previewScroll :where(h1,h2,h3,h4,h5,h6) {
@@ -566,8 +566,9 @@
   position: fixed;
   z-index: 70;
   inset: 0;
-  padding: 24px;
-  background: #21314c5e;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  background: #fff;
   box-sizing: border-box;
 }
 
@@ -579,7 +580,8 @@
 .fullscreen {
   height: 100%;
   border: 0;
-  box-shadow: 0 20px 80px #21314c40;
+  border-radius: 0;
+  box-shadow: none;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

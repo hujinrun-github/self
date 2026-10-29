@@ -69,6 +69,11 @@ func RouteMeta(routePath string, cfg SEOConfig) PageMeta {
 	canonicalPath := normalizedPublicPath(routePath)
 	_, leaf := splitLocaleRoute(canonicalPath)
 	title := cfg.SiteName
+	robots := ""
+	if leaf == "/journal" || strings.HasPrefix(leaf, "/journal/") {
+		title = "Journal | " + cfg.SiteName
+		robots = "noindex, nofollow"
+	}
 	switch leaf {
 	case "/projects":
 		title = "Projects | " + cfg.SiteName
@@ -84,6 +89,7 @@ func RouteMeta(routePath string, cfg SEOConfig) PageMeta {
 		Description: cfg.Description,
 		Canonical:   strings.TrimRight(cfg.PublicBaseURL, "/") + canonicalPath,
 		Alternates:  routeAlternates(canonicalPath, cfg.PublicBaseURL),
+		Robots:      robots,
 	}
 }
 

@@ -8,7 +8,7 @@ Backend tests use PostgreSQL schemas created under `TEST_DATABASE_URL`:
 
 ```powershell
 $env:TEST_DATABASE_URL="postgres://postgres:<password>@localhost:5432/postgres?sslmode=disable"
-go test ./cmd/server ./internal/config ./internal/db ./internal/httpserver ./internal/auth ./internal/site ./internal/profile ./internal/content ./internal/media ./internal/backup ./cmd/migrate-sqlite-to-postgres -count=1
+go test ./cmd/server ./internal/config ./internal/db ./internal/httpserver ./internal/auth ./internal/site ./internal/profile ./internal/content ./internal/journal ./internal/media ./internal/backup ./cmd/migrate-sqlite-to-postgres -count=1
 ```
 
 Frontend tests and build:
@@ -45,7 +45,25 @@ $env:PRIVATE_UPLOADS_DIR="data/private_uploads"
 go run ./cmd/server
 ```
 
-Set `PORT` to override the default `8080`. `APP_ORIGINS` is optional and accepts a comma-separated allowlist for additional admin origins, such as a local preview URL plus a Tailscale Funnel URL.
+Set `PORT` to override the default `8080`. `APP_ORIGINS` is optional and accepts a comma-separated allowlist for additional admin and journal-reader origins, such as a local preview URL plus a Tailscale Funnel URL. Include the public site's origin if it differs from `APP_ORIGIN`.
+
+## Canvas Journal
+
+Open `/admin/journal` after the normal administrator login. Create a notebook, choose a blank, daily, or travel template, and arrange text, notes, photos, and stickers on its paper canvas. Entries support automatic saving, timeline/calendar browsing, search, filters, favorites, notebook moves, and a 30-day trash. Unsaved edits stay only in the open page's memory; they are not an offline backup. Version conflicts offer a separate copy or the latest saved version. Markdown content fields use a tall writing area and provide a clearly labeled full-window writing mode; Escape exits fullscreen without replacing the editor session. WYSIWYG and single-pane preview modes use the available width with small responsive side padding instead of a fixed narrow reading column.
+
+Choose “扩大纸张” in the canvas settings to make more room for content. Each expansion increases the paper dimensions by 50%, up to 4000 per side, without changing existing elements' positions, sizes, or formatting. Expansion supports undo, redo, and automatic saving; existing entries keep their saved dimensions until expanded. “整页” fits larger paper on small screens.
+
+Each notebook starts with public display disabled. In its settings, choose a public name and decorative cover, set an 8–72 UTF-8-byte viewing password, then enable public display. The homepage and `/zh/journal` (also `/en/journal` and `/ja/journal`) show only these public fields. Visitors need no account; they enter the notebook password to read saved entries. Administrators can directly view, edit, and export without this password.
+
+Open a saved entry or choose “翻阅手帐” to read a notebook as a book, with paper, binding shadows, and page-turn animation. Desktop shows entry details beside the original canvas; mobile uses a single page. Use the previous/next buttons, arrow keys while the reader is focused, or its separate swipe strip. Canvas dragging and zooming remain independent, and reduced-motion preferences disable the animation. Administrators can open the same reader from a selected notebook and edit the current page.
+
+Choose “分享手帐” to copy a link to a full-window, read-only book reader. A notebook link starts on its first saved page; sharing from an open entry starts on that page. The link uses `/:locale/journal/:notebookId/read?entry=:entryId`, without passwords or authorization tokens. Recipients still need the notebook viewing password, and closing public display, archiving the notebook, or changing the password revokes existing visitor access as usual. Admin sharing requires an enabled public notebook with a viewing password; sharing an editor page reads its saved content. The dedicated reader has no site navigation or editing controls and offers an optional browser full-screen button.
+
+Visitor access expires after 15 minutes without interaction or one hour total. Changing/clearing the password, archiving, or disabling public display revokes prior grants. A password is shared access, not a per-person allowlist or end-to-end encryption. Journal APIs and private images use `private, no-store` responses; photos are stored in PostgreSQL, never the public media directories.
+
+Admin export supports PNG, PDF (including selected/all pages), text extraction, and an editable ZIP containing `journal.json` plus normalized image attachments. Restore a ZIP into a chosen notebook to create copies with new entry/asset IDs; passwords and visitor grants are not imported. Keep exported files private. ZIP export/import is limited to 200 MB, 1,000 entries and 500 images; uploaded images are limited to 5 MB and 20 megapixels.
+
+Migration `007_journal.sql` runs with the existing migration system. Run `go test ./internal/journal -race -count=1` with `TEST_DATABASE_URL` to exercise password revocation, authorization, attachment boundaries, moves, conflicts, and ZIP round trips.
 
 ## Writing Markdown Import
 
@@ -73,10 +91,12 @@ cd ..
 
 Application backups contain:
 
-- A PostgreSQL custom-format dump at `database.dump`
+- A PostgreSQL custom-format dump at `database.dump`, including journal scenes and private image bytes
 - The public upload derivatives under `uploads/`
 
 `PRIVATE_UPLOADS_DIR` is not served and is not backed up. If `pg_dump` is not on `PATH`, set `PG_DUMP_PATH` before running backup tooling.
+
+Journal images live in `journal_assets.data` (`bytea`), so restoring `database.dump` restores them together with notebook settings, entries, and image references. After a database restore, clear `journal_view_sessions` to require visitors to enter the current password again, then verify an admin can open a photo entry and export its scene archive. The notebook ZIP is a portable content copy; the database dump is the complete application backup.
 
 Restore flow:
 

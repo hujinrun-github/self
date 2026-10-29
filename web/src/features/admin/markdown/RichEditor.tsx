@@ -78,6 +78,7 @@ const metadataCodeSchema = codeBlockSchema.extendSchema((previous) => (ctx) => {
 });
 
 const richCommonmark = commonmark.filter((plugin) => !imageSchema.some((item) => item === plugin) && !codeBlockSchema.some((item) => item === plugin));
+const backgroundParagraphMeta = "rich-editor-background-paragraph";
 
 const taskItemView: NodeViewConstructor = (initialNode, view, getPos) => {
   let node = initialNode;
@@ -247,9 +248,10 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
         nodeViews: { ...previous.nodeViews, list_item: taskItemView },
         dispatchTransaction(this: EditorView, transaction: Transaction) {
           const previousDoc = this.state.doc;
+          const backgroundParagraph = transaction.getMeta(backgroundParagraphMeta) === true;
           const next = this.state.applyTransaction(transaction);
           this.updateState(next.state);
-          if (!created || cancelled || previousDoc.eq(next.state.doc)) return;
+          if (!created || cancelled || backgroundParagraph || previousDoc.eq(next.state.doc)) return;
           const markdown = ctx.get(serializerCtx)(next.state.doc);
           if (markdown === serializedValueRef.current) return;
           serializedValueRef.current = markdown;
@@ -271,9 +273,23 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
             if (!propsRef.current.onImagePaste || !Array.from(event.dataTransfer?.items ?? []).some((item) => item.kind === "file" && item.type.startsWith("image/"))) return false;
             event.preventDefault(); return true;
           },
-          click: (_view, event) => {
-            if (!(event.target instanceof Element) || !event.target.closest("a")) return false;
-            event.preventDefault(); return true;
+          click: (view, event) => {
+            if (!(event.target instanceof Element)) return false;
+            if (event.target.closest("a")) { event.preventDefault(); return true; }
+            const lastElement = view.dom.lastElementChild;
+            if (event.target !== view.dom || !lastElement || event.clientY <= lastElement.getBoundingClientRect().bottom) return false;
+            if (view.state.doc.lastChild?.type.name !== "blockquote") return false;
+            const paragraph = view.state.schema.nodes.paragraph;
+            if (!paragraph) return false;
+            event.preventDefault();
+            const position = view.state.doc.content.size;
+            const transaction = view.state.tr.insert(position, paragraph.create());
+            transaction.setSelection(TextSelection.create(transaction.doc, position + 1));
+            transaction.setMeta("addToHistory", false);
+            transaction.setMeta(backgroundParagraphMeta, true);
+            view.dispatch(transaction);
+            view.focus();
+            return true;
           },
           keydown: (_view, event) => {
             if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey) || !propsRef.current.onLinkShortcut) return false;
