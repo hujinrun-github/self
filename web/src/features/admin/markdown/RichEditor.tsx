@@ -277,8 +277,14 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
             if (!(event.target instanceof Element)) return false;
             if (event.target.closest("a")) { event.preventDefault(); return true; }
             const lastElement = view.dom.lastElementChild;
-            if (event.target !== view.dom || !lastElement || event.clientY <= lastElement.getBoundingClientRect().bottom) return false;
-            if (view.state.doc.lastChild?.type.name !== "blockquote") return false;
+            if (!(lastElement instanceof HTMLElement) || view.state.doc.lastChild?.type.name !== "blockquote") return false;
+            // A final quote can occupy the remaining editor height in WebKit. In that case the
+            // blank area belongs to the blockquote rather than the ProseMirror root, so checking
+            // only `event.target === view.dom` leaves the caret trapped inside the quote.
+            if (event.target !== view.dom && event.target !== lastElement) return false;
+            const quoteContentBottom = lastElement.lastElementChild?.getBoundingClientRect().bottom
+              ?? lastElement.getBoundingClientRect().bottom;
+            if (event.clientY <= quoteContentBottom) return false;
             const paragraph = view.state.schema.nodes.paragraph;
             if (!paragraph) return false;
             event.preventDefault();
