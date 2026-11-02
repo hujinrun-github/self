@@ -1,0 +1,33 @@
+{
+  "environment": "isolated localhost / production frontend bundle",
+  "browser": "Codex in-app browser",
+  "desktop_viewport": "default (1280 x 720 observed)",
+  "mobile_viewport": "390 x 844",
+  "checks": {
+    "travel_template_fullscreen": true,
+    "manual_save_success_toast": true,
+    "unchanged_save_toast": true,
+    "notice_dismissal_in_fullscreen": true,
+    "escape_restores_editor": true,
+    "undo_redo_preserved_across_fullscreen": true,
+    "mobile_property_drawer": true,
+    "mobile_sticker_edit_and_save": true,
+    "saved_entry_reopened_and_reloaded": true,
+    "mobile_document_scroll_width": 390,
+    "mobile_canvas_size": [
+      390,
+      844
+    ],
+    "console_errors": 0
+  },
+  "temporary_viewport_reset": true,
+  "production_user_drafts_modified": false,
+  "production_checks": {
+    "temporary_blank_page_fullscreen": true,
+    "empty_save_notice": true,
+    "escape_exit": true,
+    "temporary_tab_closed": true,
+    "user_original_tab_preserved": true,
+    "journal_records_created_or_modified": false
+  }
+}

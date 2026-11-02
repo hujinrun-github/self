@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "path": "/zh",
+      "width": 1440,
+      "status": 200,
+      "title": "胡锦闰 | 作品集",
+      "horizontalOverflow": false,
+      "pageErrors": 0
+    },
+    {
+      "path": "/zh/journal",
+      "width": 1440,
+      "status": 200,
+      "title": "手帐 · 密码查看",
+      "horizontalOverflow": false,
+      "pageErrors": 0
+    },
+    {
+      "path": "/zh",
+      "width": 390,
+      "status": 200,
+      "title": "胡锦闰 | 作品集",
+      "horizontalOverflow": false,
+      "pageErrors": 0
+    },
+    {
+      "path": "/zh/journal",
+      "width": 390,
+      "status": 200,
+      "title": "手帐 · 密码查看",
+      "horizontalOverflow": false,
+      "pageErrors": 0
+    }
+  ]
+}

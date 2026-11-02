@@ -1,0 +1,53 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 246B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/self-portfolio-app:rollback-20261003-003459-f4cb5414
+#2 DONE 0.1s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [1/6] FROM docker.io/library/self-portfolio-app:rollback-20261003-003459-f4cb5414@sha256:4b51bc2e3c37e83ef311023499a1e8cf73649525951f57869d376095c90d3504
+#5 resolve docker.io/library/self-portfolio-app:rollback-20261003-003459-f4cb5414@sha256:4b51bc2e3c37e83ef311023499a1e8cf73649525951f57869d376095c90d3504 0.0s done
+#5 DONE 0.1s
+
+#4 [internal] load build context
+#4 ...
+
+#6 [2/6] WORKDIR /app
+#6 DONE 0.1s
+
+#4 [internal] load build context
+#4 transferring context: 23.73MB 0.2s done
+#4 DONE 0.2s
+
+#7 [3/6] RUN rm -rf /app/web/dist
+#7 DONE 0.1s
+
+#8 [4/6] COPY server /app/server
+#8 DONE 0.1s
+
+#9 [5/6] COPY web/dist /app/web/dist
+#9 DONE 0.1s
+
+#10 [6/6] RUN chmod 0755 /app/server
+#10 DONE 0.2s
+
+#11 exporting to image
+#11 exporting layers
+#11 exporting layers 1.2s done
+#11 exporting manifest sha256:be27b2d449f8fff32d5e5111c5a2710d3004637d85ef330b208ecdd4e80463e9 0.0s done
+#11 exporting config sha256:f3619e53a0562c502e891df2a88a758858e2bf7a6c1467a84cdb83ec8b844a78 0.0s done
+#11 exporting attestation manifest sha256:87093aeecc4a4577e8ec33bd5972f84863e46690cc5317c9697a045bee3b6a70 0.0s done
+#11 exporting manifest list sha256:dca9a570d6aaeade0dbb54fbbeb87b05a72c9f4dc84d1bd9b1527ef2b50c91d2 0.0s done
+#11 naming to docker.io/library/self-portfolio-app:portfolio-20261003-003459-f4cb5414 done
+#11 unpacking to docker.io/library/self-portfolio-app:portfolio-20261003-003459-f4cb5414
+#11 unpacking to docker.io/library/self-portfolio-app:portfolio-20261003-003459-f4cb5414 0.3s done
+#11 DONE 1.5s

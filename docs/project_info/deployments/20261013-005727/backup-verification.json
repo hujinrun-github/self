@@ -1,0 +1,7 @@
+{
+  "dump_sha256": "03846f51cde18e0e57fefb97b2af6baa6f1fbf409f3b4578754b2055f4e44d61",
+  "dump_bytes": 1876136,
+  "restore_list_entries": 243,
+  "client": "postgres:18-alpine",
+  "validated": true
+}

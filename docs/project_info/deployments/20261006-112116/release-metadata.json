@@ -1,0 +1,12 @@
+{
+  "release_id": "portfolio-journal-image-limit-20261006-112116-6b15ea55",
+  "scope": "journal image upload limit",
+  "source_changes": [
+    "README.md",
+    "internal/journal/assets.go",
+    "internal/journal/journal_test.go",
+    "web/src/features/journal/JournalCanvas.test.tsx",
+    "web/src/features/journal/JournalCanvas.tsx"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa"
+}

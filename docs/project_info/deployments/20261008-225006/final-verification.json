@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-10-08T14:55:05.896306+00:00",
+  "container_id": "1aaee435a63b9cd21c824d09fbc9dc258b501cdfe240f79923b71d2848833560",
+  "image": "sha256:8cdccc601bd6e6cea83c3e37e2cf2619145a66905b1e3c7807a5cdd429d44122",
+  "health": "healthy",
+  "restart_count": 0,
+  "startup_logs_ok": true,
+  "public_health_ok": true,
+  "flowspace_unchanged_and_healthy": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_files_verified": 128
+}

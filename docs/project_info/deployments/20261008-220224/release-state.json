@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-journal-book-20261008-220224-cea21ecd",
+  "deployed_at": "2026-10-08T14:06:16.713801+00:00",
+  "scope": "journal book reader frontend only",
+  "image": "sha256:cef8ffeb8187eb76957ef5fb093e464674b38d566420fe578365003b224f17df",
+  "image_tag": "self-portfolio-app:portfolio-journal-book-20261008-220224-cea21ecd",
+  "container_id": "02a309094438ace02b864936b6589aab8e68aa03c8aeef42b188504e939ed584",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-journal-book-20261008-220224-cea21ecd"
+}

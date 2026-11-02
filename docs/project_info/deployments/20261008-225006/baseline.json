@@ -1,0 +1,115 @@
+{
+  "release_id": "portfolio-journal-space-20261008-225006-e4e0d8bb",
+  "prepared_at": "2026-10-08T14:50:48.689594+00:00",
+  "scope": "journal expandable paper canvas frontend only",
+  "containers": [
+    {
+      "name": "/portfolio-app",
+      "id": "31dd44efa00219a4966b9a66c4f552f7ef4e1fd5f4b4f847b0f209f399fac87e",
+      "image": "sha256:f3cc55150e5705e38afb53bdfcf492430b55abe716756d4d24410157c0be1fe4",
+      "image_name": "self-portfolio-app",
+      "health": "healthy",
+      "restart_count": 0,
+      "config_hash": "dd5a2a31dda5d25d69fcb1ae86a7d125183d714fdf83aa2174faf734ee2fd483",
+      "env_hash": "606136bcf643b1713fe679f5cdaf0c2403f858c431071024f0f8c0133ddf6fa7",
+      "ports": {
+        "8080/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "4300"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "4300"
+          }
+        ]
+      },
+      "mounts": [
+        {
+          "Source": "/home/ubuntu/apps/self/runtime/private_uploads",
+          "Destination": "/app/data/private_uploads",
+          "RW": true
+        },
+        {
+          "Source": "/home/ubuntu/apps/self/runtime/uploads",
+          "Destination": "/app/data/uploads",
+          "RW": true
+        }
+      ],
+      "networks": [
+        "self_default"
+      ],
+      "extra_hosts": [
+        "host.docker.internal:host-gateway"
+      ]
+    },
+    {
+      "name": "/flowspace-backend",
+      "id": "836f39600f72df2bea010b90fb3bbcbdcabf89cc8cf95a63f34be41d192b54e6",
+      "image": "sha256:e6f94fe5ed3fe92d9fa0d517b372cbd6dfb2ca04043d8817e49b2e03a1c20a84",
+      "image_name": "flowspace-backend:latest",
+      "health": "healthy",
+      "restart_count": 0,
+      "config_hash": "c3ee73234356b84e7f76a63d0f962a87d266c517f259ad6ad06c957b29349296",
+      "env_hash": "e23763bbfb805f04f72759d1ba4323e9440b56441a3eb96bf6f2e1ba237cd346",
+      "ports": {
+        "4201/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "4201"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "4201"
+          }
+        ]
+      },
+      "mounts": [
+        {
+          "Source": "/home/ubuntu/apps/all_note/secrets/credentials-keyring.json",
+          "Destination": "/run/secrets/flowspace-credentials-keyring.json",
+          "RW": false
+        }
+      ],
+      "networks": [
+        "flowspace_default"
+      ],
+      "extra_hosts": []
+    },
+    {
+      "name": "/flowspace-frontend",
+      "id": "d5dc65fc8cf5175cd7bab52612c87ec30ec0fdf9fafb9853d83b347330b16586",
+      "image": "sha256:22e391d6afc879604fa78216fa1a9146cd5658118d12720a13ab713545ef82d7",
+      "image_name": "flowspace-frontend:latest",
+      "health": "healthy",
+      "restart_count": 0,
+      "config_hash": "71038e0878b24be88a89482c1c43e3a2658be2738991a932babac10080130872",
+      "env_hash": "e3b24b7a9e29daa77bf8fabda4cc107627373220fd0bfbe4dc15cf821984dbcf",
+      "ports": {
+        "4200/tcp": [
+          {
+            "HostIp": "0.0.0.0",
+            "HostPort": "4200"
+          },
+          {
+            "HostIp": "::",
+            "HostPort": "4200"
+          }
+        ],
+        "80/tcp": null
+      },
+      "mounts": [],
+      "networks": [
+        "flowspace_default"
+      ],
+      "extra_hosts": []
+    }
+  ],
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "compose_sha256": "04130a7f37ecb410e426b886f879ce6aff1c261604227796cc016c359b35de88",
+  "caddy_sha256": "12b40af2129dee7d985f390ac286af868a18628af6ebf20754ed45d2cd9e13a8",
+  "old_server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "git_head": "08896e6a08aebd37f13b608b76da6670459cba73",
+  "git_status": " M README.md\n M cmd/server/main.go\n M go.mod\n M go.sum\n M internal/auth/auth.go\n M internal/auth/auth_test.go\n M internal/auth/csrf.go\n M internal/auth/session.go\n M internal/backup/backup.go\n M internal/backup/backup_test.go\n M internal/config/config.go\n M internal/config/config_test.go\n M internal/content/admin_list.go\n M internal/content/content_test.go\n M internal/content/experience.go\n M internal/content/projects.go\n M internal/content/public.go\n M internal/content/reorder.go\n M internal/content/routes.go\n M internal/content/slug_test.go\n M internal/content/status.go\n M internal/content/status_helpers.go\n M internal/content/talks.go\n M internal/content/terms.go\n M internal/content/time.go\n M internal/content/writing.go\n M internal/db/db.go\n M internal/db/migrate.go\n M internal/db/migrate_test.go\n M internal/db/migrations/001_initial.sql\n M internal/httpserver/routes.go\n M internal/httpserver/routes_test.go\n M internal/httpserver/security_headers.go\n M internal/media/media.go\n M internal/media/media_test.go\n M internal/media/references.go\n M internal/media/variants.go\n M internal/profile/profile.go\n M internal/profile/profile_test.go\n M internal/site/home.go\n M internal/site/home_test.go\n M internal/site/routes.go\n M internal/site/seo.go\n M internal/site/seo_test.go\n M web/src/app/routes.tsx\n M web/src/components/markdown/MarkdownView.test.tsx\n M web/src/components/markdown/MarkdownView.tsx\n M web/src/features/admin/Admin.module.css\n M web/src/features/admin/AdminLayout.tsx\n M web/src/features/admin/AdminUI.test.tsx\n M web/src/features/admin/ContentEditPage.tsx\n M web/src/features/admin/ContentListPage.tsx\n M web/src/features/admin/MarkdownEditor.tsx\n M web/src/features/admin/MediaPage.tsx\n M web/src/features/admin/ProfilePage.tsx\n M web/src/features/auth/LoginPage.tsx\n M web/src/features/public/HomePage.tsx\n M web/src/features/public/ProjectDetailPage.tsx\n M web/src/features/public/Public.module.css\n M web/src/features/public/PublicLayout.tsx\n M web/src/features/public/PublicListPage.tsx\n M web/src/features/public/TalkDetailPage.tsx\n M web/src/features/public/WritingDetailPage.tsx\n M web/src/features/public/detail.tsx\n M web/src/lib/api.ts\n M web/src/lib/media.ts\n M web/src/lib/types.ts\n M web/src/styles/global.css\n M web/src/test/setup.ts\n M web/vite.config.ts\n?? .compose.preserve-runtime.20261001-080818.json\n?? .dockerignore\n?? .env\n?? .env.bak.minio-reuse.20261001-080818\n?? .env.bak.minio-reuse.20261001-081050\n?? .env.bak.minio-working.20261002-150722\n?? Dockerfile\n?? cmd/migrate-sqlite-to-postgres/\n?? cmd/server/blob_probe.go\n?? cmd/server/blob_probe_test.go\n?? cmd/server/router.go\n?? cmd/server/router_test.go\n?? docker-compose.yml\n?? internal/content/admin_list_test.go\n?? internal/content/admin_translations.go\n?? internal/content/localized.go\n?? internal/content/localized_public_test.go\n?? internal/content/markdown_media.go\n?? internal/content/markdown_media_test.go\n?? internal/content/resource_translation_admin.go\n?? internal/content/translation_admin.go\n?? internal/content/translation_generate.go\n?? internal/content/writing_engagement.go\n?? internal/content/writing_import.go\n?? internal/content/writing_import_routes.go\n?? internal/content/writing_import_routes_test.go\n?? internal/content/writing_import_test.go\n?? internal/db/db_test.go\n?? internal/db/migrations/002_multilingual.sql\n?? internal/db/migrations/003_writing_import.sql\n?? internal/db/migrations/004_experience_tech.sql\n?? internal/db/migrations/005_writing_engagement.sql\n?? internal/db/ping.go\n?? internal/db/ping_test.go\n?? internal/db/postgres_test.go\n?? internal/db/testutil_test.go\n?? internal/health/\n?? internal/i18n/\n?? internal/media/blobstore.go\n?? internal/media/blobstore_health.go\n?? internal/media/blobstore_health_test.go\n?? internal/media/blobstore_local.go\n?? internal/media/blobstore_minio.go\n?? internal/media/blobstore_test.go\n?? internal/media/public_routes.go\n?? internal/media/public_routes_test.go\n?? internal/profile/admin_translations.go\n?? internal/profile/translation_admin.go\n?? internal/profile/translation_generate.go\n?? internal/storage/\n?? internal/testutil/\n?? internal/translation/\n?? runtime/\n?? scripts/\n?? web/src/features/admin/MarkdownEditor.test.tsx\n?? web/src/features/admin/TranslationWorkflow.tsx\n?? web/src/features/admin/WritingImportDialog.test.tsx\n?? web/src/features/admin/WritingImportDialog.tsx\n?? web/src/features/admin/adminI18n.ts\n?? web/src/features/admin/translationErrors.test.ts\n?? web/src/features/admin/translationErrors.ts\n?? web/src/features/admin/writingImport.ts\n?? web/src/features/public/ProfileAvatar.tsx\n?? web/src/features/public/ProfilePages.tsx\n?? web/src/features/public/PublicRoutes.test.tsx\n?? web/src/features/public/SocialLinkCard.tsx\n?? web/src/features/public/head.ts\n?? web/src/features/public/locale.ts\n?? web/src/test/viteProxy.test.ts\n",
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-journal-space-20261008-225006-e4e0d8bb"
+}

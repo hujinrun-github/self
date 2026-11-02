@@ -1,0 +1,13 @@
+
+> web@0.0.0 test
+> vitest --passWithNoTests --run
+
+
+ RUN  v4.1.8 /Users/tylerhu/GitProject/self/web
+
+
+ Test Files  26 passed (26)
+      Tests  280 passed (280)
+   Start at  01:11:30
+   Duration  9.20s (transform 2.98s, setup 1.76s, import 7.06s, tests 21.04s, environment 13.75s)
+

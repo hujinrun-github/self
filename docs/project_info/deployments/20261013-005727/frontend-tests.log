@@ -1,0 +1,13 @@
+
+> web@0.0.0 test
+> vitest --passWithNoTests --run
+
+
+ RUN  v4.1.8 /private/tmp/self-markdown-width.HKujZV/source/web
+
+
+ Test Files  30 passed (30)
+      Tests  368 passed (368)
+   Start at  00:57:50
+   Duration  10.05s (transform 3.19s, setup 1.35s, import 8.26s, tests 27.36s, environment 12.37s)
+

@@ -1,0 +1,36 @@
+{
+  "environment": "isolated local journal",
+  "desktop": {
+    "control_width": 157,
+    "control_height": 46,
+    "right_padding": 40,
+    "appearance": "none"
+  },
+  "mobile_390": {
+    "document_scroll_width": 390,
+    "long_label_truncated": true,
+    "native_option_full_text": true,
+    "selected_style": true
+  },
+  "mobile_320": {
+    "document_scroll_width": 320,
+    "single_column_select_width": 296
+  },
+  "checks": {
+    "tag_selection": true,
+    "mood_selection": true,
+    "no_matching_entries": true,
+    "clear_filters_restores_entries": true
+  },
+  "viewport_reset": true,
+  "temporary_tab_closed": true,
+  "production": {
+    "control_width": 157,
+    "control_height": 46,
+    "padding_right": 40,
+    "appearance": "none",
+    "visual_verified": true,
+    "temporary_tab_closed": true,
+    "user_records_modified": false
+  }
+}

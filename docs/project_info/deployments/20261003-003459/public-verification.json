@@ -1,0 +1,55 @@
+{
+  "verified_at": "2026-10-02T16:45:49.741747+00:00",
+  "results": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "cache_control": "no-store"
+    },
+    {
+      "path": "/zh",
+      "status": 200,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/en",
+      "status": 200,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/ja",
+      "status": 200,
+      "cache_control": "no-cache"
+    },
+    {
+      "path": "/zh/journal",
+      "status": 200,
+      "cache_control": "private, no-store"
+    },
+    {
+      "path": "/en/journal",
+      "status": 200,
+      "cache_control": "private, no-store"
+    },
+    {
+      "path": "/ja/journal",
+      "status": 200,
+      "cache_control": "private, no-store"
+    },
+    {
+      "path": "/api/site/journal/notebooks",
+      "status": 200,
+      "cache_control": "private, no-store"
+    },
+    {
+      "path": "/assets/index-C-AabJUo.css",
+      "sha256": "45ad9b9901a225b9e3e0b8ad08eec11a2510ffde139ace3d51a8fde5e2fe5054",
+      "matches_build": true
+    },
+    {
+      "path": "/assets/index-CMMuWBBL.js",
+      "sha256": "791108c42f978b9f74510cc03a4896e77efea35ba7018b926685ce68ec760d28",
+      "matches_build": true
+    }
+  ]
+}

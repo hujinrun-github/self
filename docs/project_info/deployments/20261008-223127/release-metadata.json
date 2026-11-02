@@ -1,0 +1,27 @@
+{
+  "release_id": "portfolio-journal-share-20261008-223127-0ce90fc6",
+  "scope": "journal full-screen read-only sharing frontend only",
+  "source_changes": [
+    "README.md",
+    "web/src/app/routes.tsx",
+    "web/src/features/journal/JournalAdminPage.tsx",
+    "web/src/features/journal/JournalBookReader.module.css",
+    "web/src/features/journal/JournalBookReader.test.tsx",
+    "web/src/features/journal/JournalBookReader.tsx",
+    "web/src/features/journal/JournalCanvas.module.css",
+    "web/src/features/journal/JournalCanvas.tsx",
+    "web/src/features/journal/JournalEntryPage.tsx",
+    "web/src/features/journal/JournalPublicPage.tsx",
+    "web/src/features/journal/JournalReadingPage.module.css",
+    "web/src/features/journal/JournalShareAdmin.test.tsx",
+    "web/src/features/journal/JournalShareButton.module.css",
+    "web/src/features/journal/JournalShareButton.test.tsx",
+    "web/src/features/journal/JournalShareButton.tsx",
+    "web/src/features/journal/JournalSharePage.test.tsx",
+    "web/src/features/journal/journalCopy.ts",
+    "web/src/features/journal/journalShare.ts"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_tests": 353,
+  "backend_rebuilt": false
+}

@@ -1,0 +1,20 @@
+{
+  "verified_at": "2026-10-06T11:20:00+08:00",
+  "frontend": {
+    "journal_canvas_tests": 22,
+    "full_test_files": 26,
+    "full_tests": 281,
+    "production_build": "passed",
+    "scoped_eslint": "passed"
+  },
+  "backend": {
+    "postgres_boundary_test": "passed",
+    "journal_race_tests": "passed",
+    "server_and_http_tests": "passed",
+    "journal_vet": "passed"
+  },
+  "boundary": {
+    "accepted_bytes": 5242880,
+    "rejected_bytes": 5242881
+  }
+}

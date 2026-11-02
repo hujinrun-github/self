@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-journal-space-20261008-225006-e4e0d8bb",
+  "deployed_at": "2026-10-08T14:53:57.843585+00:00",
+  "scope": "journal expandable paper canvas frontend only",
+  "image": "sha256:8cdccc601bd6e6cea83c3e37e2cf2619145a66905b1e3c7807a5cdd429d44122",
+  "image_tag": "self-portfolio-app:portfolio-journal-space-20261008-225006-e4e0d8bb",
+  "container_id": "1aaee435a63b9cd21c824d09fbc9dc258b501cdfe240f79923b71d2848833560",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-journal-space-20261008-225006-e4e0d8bb"
+}

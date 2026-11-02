@@ -1,0 +1,13 @@
+{
+  "release_id": "portfolio-markdown-fullscreen-20261013-003611-442a472d",
+  "scope": "larger Markdown editor and full-window writing frontend only",
+  "source_changes": [
+    "README.md",
+    "web/src/features/admin/MarkdownEditor.test.tsx",
+    "web/src/features/admin/MarkdownEditor.tsx",
+    "web/src/features/admin/markdown/MarkdownWorkspace.module.css"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_tests": 368,
+  "backend_rebuilt": false
+}

@@ -1,0 +1,13 @@
+
+> web@0.0.0 test
+> vitest --passWithNoTests --run src/features/journal/JournalPages.test.tsx
+
+
+ RUN  v4.1.8 /Users/tylerhu/GitProject/self/web
+
+
+ Test Files  1 passed (1)
+      Tests  23 passed (23)
+   Start at  01:30:26
+   Duration  8.30s (transform 107ms, setup 43ms, import 200ms, tests 7.64s, environment 342ms)
+
