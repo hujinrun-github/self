@@ -1,0 +1,19 @@
+{
+  "verified_at": "2026-10-08T14:55:06.799258+00:00",
+  "assets": [
+    {
+      "path": "/assets/index-BCv9K84V.js",
+      "sha256": "6f6bc7aa2a30815cc1190577b5081647025ef50b7474b52c1068224d1bc46044",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-BQ82oNy9.css",
+      "sha256": "a7f97a85fe9832433432ce3a02c2b0ef96121f587980b4f96b446c90ec875868",
+      "status": 200
+    }
+  ],
+  "share_route_status": 200,
+  "share_route_cache_control": "private, no-store",
+  "share_route_robots": "noindex, nofollow",
+  "health_ok": true
+}

@@ -1,0 +1,65 @@
+{
+  "started_at": "2026-10-02T16:49:00.734Z",
+  "checks": [
+    {
+      "check": "Public HTTPS health",
+      "ok": true
+    },
+    {
+      "check": "Administrator login with Origin and CSRF",
+      "ok": true
+    },
+    {
+      "check": "Notebook stays hidden until public display is enabled",
+      "ok": true
+    },
+    {
+      "check": "Administrator reads canvas and private image without a journal unlock",
+      "ok": true
+    },
+    {
+      "check": "Anonymous catalogue exposes only the permitted public notebook fields",
+      "ok": true
+    },
+    {
+      "check": "Locked entries/images and administrator APIs are inaccessible to anonymous visitors",
+      "ok": true
+    },
+    {
+      "check": "Mobile browser shows password gate with no private content prefetch",
+      "ok": true
+    },
+    {
+      "check": "Admin browser opens canvas directly with existing administrator session",
+      "ok": true
+    },
+    {
+      "check": "Wrong password denied; correct password enables read-only canvas and exact photo bytes",
+      "ok": true
+    },
+    {
+      "check": "Mobile browser unlocks and displays a read-only canvas",
+      "ok": true
+    },
+    {
+      "check": "Password rotation revokes visitor canvas/image access immediately; admin remains authorized",
+      "ok": true
+    },
+    {
+      "check": "Browser returns to password gate after rotation",
+      "ok": true
+    },
+    {
+      "check": "New password works and explicit lock revokes image access",
+      "ok": true
+    }
+  ],
+  "cleanup": {
+    "fixtures_removed": true,
+    "audit_trail": "Application audit events intentionally retained; deleted notebook foreign keys are null.",
+    "logged_out": true
+  },
+  "status": "passed",
+  "base_url": "https://self.jinrunlab.site",
+  "finished_at": "2026-10-02T16:49:13.356Z"
+}

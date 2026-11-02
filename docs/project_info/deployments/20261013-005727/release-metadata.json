@@ -1,0 +1,11 @@
+{
+  "release_id": "portfolio-markdown-width-20261013-005727-8abb782a",
+  "scope": "wider WYSIWYG and preview Markdown content frontend only",
+  "source_changes": [
+    "web/src/features/admin/markdown/RichEditor.module.css",
+    "web/src/features/admin/markdown/MarkdownWorkspace.module.css"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_tests": 368,
+  "backend_rebuilt": false
+}

@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-journal-share-20261008-223127-0ce90fc6",
+  "deployed_at": "2026-10-08T14:35:28.723960+00:00",
+  "scope": "journal full-screen read-only sharing frontend only",
+  "image": "sha256:f3cc55150e5705e38afb53bdfcf492430b55abe716756d4d24410157c0be1fe4",
+  "image_tag": "self-portfolio-app:portfolio-journal-share-20261008-223127-0ce90fc6",
+  "container_id": "31dd44efa00219a4966b9a66c4f552f7ef4e1fd5f4b4f847b0f209f399fac87e",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-journal-share-20261008-223127-0ce90fc6"
+}

@@ -1,0 +1,21 @@
+{
+  "verified_at": "2026-10-06T11:29:00+08:00",
+  "health": {
+    "url": "https://self.jinrunlab.site/api/health",
+    "response": {
+      "ok": true
+    }
+  },
+  "assets": [
+    {
+      "path": "/assets/index-Dk77tMn7.js",
+      "sha256": "d61e2d8eb3643f47163312368458f6feb96fd6be6bf745c9f9c1b091ba26f4a3",
+      "matches_release": true
+    },
+    {
+      "path": "/assets/index-CDH8RNWq.css",
+      "sha256": "86e7c6e73bbf1a842866d98383fc99532ab729f4469e28d786c2a6e25f4e3088",
+      "matches_release": true
+    }
+  ]
+}

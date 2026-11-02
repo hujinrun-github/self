@@ -1,0 +1,16 @@
+{
+  "release_id": "portfolio-journal-space-20261008-225006-e4e0d8bb",
+  "scope": "journal expandable paper canvas frontend only",
+  "source_changes": [
+    "README.md",
+    "web/src/features/journal/JournalCanvas.module.css",
+    "web/src/features/journal/JournalCanvas.test.tsx",
+    "web/src/features/journal/JournalCanvas.tsx",
+    "web/src/features/journal/export.test.ts",
+    "web/src/features/journal/scene.test.ts",
+    "web/src/features/journal/scene.ts"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_tests": 368,
+  "backend_rebuilt": false
+}

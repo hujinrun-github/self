@@ -1,0 +1,49 @@
+{
+  "environment": "isolated localhost / frozen production frontend bundle",
+  "browser": "Codex in-app browser",
+  "production_content_modified": false,
+  "desktop": {
+    "viewport_width": 1920,
+    "viewport_height": 1080,
+    "workspace_width": 1198,
+    "wysiwyg_host_width": 1196,
+    "wysiwyg_editor_width": 1196,
+    "wysiwyg_outer_gap_left": 0,
+    "wysiwyg_outer_gap_right": 0,
+    "wysiwyg_padding_left": 72,
+    "wysiwyg_padding_right": 72,
+    "wysiwyg_text_width": 1052,
+    "preview_width": 1196,
+    "preview_padding_left": 72,
+    "preview_padding_right": 72,
+    "horizontal_overflow": false
+  },
+  "fullscreen": {
+    "viewport_width": 1920,
+    "viewport_height": 1080,
+    "dialog_width": 1920,
+    "wysiwyg_host_width": 1920,
+    "wysiwyg_editor_width": 1920,
+    "wysiwyg_outer_gap_left": 0,
+    "wysiwyg_outer_gap_right": 0,
+    "wysiwyg_padding_left": 72,
+    "wysiwyg_padding_right": 72,
+    "wysiwyg_text_width": 1776,
+    "horizontal_overflow": false
+  },
+  "mobile": {
+    "viewport_width": 390,
+    "viewport_height": 844,
+    "wysiwyg_host_width": 330,
+    "wysiwyg_editor_width": 330,
+    "wysiwyg_outer_gap_left": 0,
+    "wysiwyg_outer_gap_right": 0,
+    "wysiwyg_padding_left": 18,
+    "wysiwyg_padding_right": 18,
+    "wysiwyg_text_width": 294,
+    "document_scroll_width": 390,
+    "horizontal_overflow": false
+  },
+  "console_errors": 0,
+  "user_original_browser_tab_preserved": true
+}

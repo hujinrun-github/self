@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-journal-image-limit-20261006-112116-6b15ea55",
+  "deployed_at": "2026-10-06T03:26:00.383923+00:00",
+  "scope": "journal image upload limit backend and frontend",
+  "image": "sha256:502c40bdf45cbab77c740c3a439f97df1f5b1a65766f1ba7f01c05933666001b",
+  "image_tag": "self-portfolio-app:portfolio-journal-image-limit-20261006-112116-6b15ea55",
+  "container_id": "362663a64fd8ecb41f02e8dfd6daa9ad00b929f731d8a93d4fae2ea9d8fb8eae",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-journal-image-limit-20261006-112116-6b15ea55"
+}

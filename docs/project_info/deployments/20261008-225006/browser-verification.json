@@ -1,0 +1,25 @@
+{
+  "environment": "disposable local PostgreSQL fixture only",
+  "production_entries_modified": false,
+  "existing_elements_unchanged": true,
+  "autosave_and_manual_save": true,
+  "undo_and_redo_after_save": true,
+  "expanded_space_placement": {
+    "x": 880,
+    "y": 1320,
+    "paper_width": 1200,
+    "paper_height": 1650
+  },
+  "mobile_max_paper": {
+    "width": 2909,
+    "height": 4000,
+    "viewport_width": 320,
+    "viewport_height": 640,
+    "fits_editor": true,
+    "fits_share_reader": true,
+    "horizontal_overflow": false
+  },
+  "share_edit_controls": 0,
+  "mixed_size_page_turn": true,
+  "public_password_gate_preserved": true
+}

@@ -1,0 +1,33 @@
+{
+  "environment": "isolated localhost / frozen production frontend bundle",
+  "browser": "Codex in-app browser",
+  "production_content_modified": false,
+  "desktop": {
+    "viewport_width": 1280,
+    "viewport_height": 720,
+    "editor_width": 924,
+    "editor_height": 600,
+    "fullscreen_button_width": 92,
+    "fullscreen_button_height": 32,
+    "fullscreen_button_label": "全屏写作",
+    "fullscreen_dialog_width": 1280,
+    "fullscreen_dialog_height": 720,
+    "horizontal_overflow": false,
+    "escape_exits_fullscreen": true,
+    "body_scroll_restored": true,
+    "focus_restored_to_trigger": true,
+    "content_preserved": true,
+    "preview_preserved": true
+  },
+  "mobile": {
+    "viewport_width": 390,
+    "viewport_height": 844,
+    "fullscreen_dialog_width": 390,
+    "fullscreen_dialog_height": 844,
+    "horizontal_overflow": false,
+    "exit_control_accessible": true,
+    "content_preserved": true
+  },
+  "console_errors": 0,
+  "user_original_browser_tab_preserved": true
+}

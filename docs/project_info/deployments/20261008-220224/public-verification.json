@@ -1,0 +1,17 @@
+{
+  "verified_at": "2026-10-08T14:07:47.048425+00:00",
+  "public_health_ok": true,
+  "journal_page_ok": true,
+  "entry_assets": [
+    {
+      "path": "/assets/index-Cf-NhNM6.js",
+      "sha256": "e7bd4f009bc8d866532f92bf744d5e9b1db81831355a5dea49f8379ae7bf170a",
+      "matches_release": true
+    },
+    {
+      "path": "/assets/index-Dohe0Ek5.css",
+      "sha256": "f5d60f9d3732ba631d394f4d6888286723fa3afef789027676e7b48bccf54eb1",
+      "matches_release": true
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "verified_at": "2026-10-06T03:29:46.717758+00:00",
+  "login": "ok",
+  "five_megabytes": "accepted",
+  "five_megabytes_plus_one": "rejected",
+  "error_message": "Image must be at most 5 MB",
+  "temporary_data_cleaned": true
+}

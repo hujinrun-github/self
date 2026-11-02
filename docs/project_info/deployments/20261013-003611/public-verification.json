@@ -1,0 +1,17 @@
+{
+  "verified_at": "2026-10-12T16:40:00.720392+00:00",
+  "admin_route_status": 200,
+  "assets": [
+    {
+      "path": "/assets/index-BUkGRbxS.js",
+      "sha256": "84a59a06df46d282e5ff9d69b605e7aa4e2aab99631cccf061237dc31a15b687",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-LKA4QSL9.css",
+      "sha256": "3b4d04fa64058f88a505fa273e9e70ea89f3f2ed14c8a46ab8e7438bed0a68e6",
+      "status": 200
+    }
+  ],
+  "health_ok": true
+}

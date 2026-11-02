@@ -1,0 +1,19 @@
+{
+  "verified_at": "2026-10-08T14:36:40.422434+00:00",
+  "public_health_ok": true,
+  "share_route_ok": true,
+  "private_no_store": true,
+  "noindex_nofollow": true,
+  "entry_assets": [
+    {
+      "path": "/assets/index-BCia_AHk.js",
+      "sha256": "c6862a0ff97092ad455adbca116c3951ea62ce05f4bedb863190cced9b9b27c8",
+      "matches_release": true
+    },
+    {
+      "path": "/assets/index-Bvzv4_WR.css",
+      "sha256": "a2b7ae095eac49a3abd7b2931bca5f13f83a7a1849792685307c5a5bb0766949",
+      "matches_release": true
+    }
+  ]
+}

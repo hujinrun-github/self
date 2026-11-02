@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-markdown-fullscreen-20261013-003611-442a472d",
+  "deployed_at": "2026-10-12T16:39:38.561611+00:00",
+  "scope": "larger Markdown editor and full-window writing frontend only",
+  "image": "sha256:1bb852b42ba4dce8005bb2ea7b06998e3459fbe80e029ebc03117d9c47394aa5",
+  "image_tag": "self-portfolio-app:portfolio-markdown-fullscreen-20261013-003611-442a472d",
+  "container_id": "806e1c3946bb65d4c53f51cff9d3bb8848ec5d638ea2f8fbe253202db568fc35",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-markdown-fullscreen-20261013-003611-442a472d"
+}

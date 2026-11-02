@@ -1,0 +1,19 @@
+{
+  "release_id": "portfolio-journal-book-20261008-220224-cea21ecd",
+  "scope": "journal book reader frontend only",
+  "source_changes": [
+    "README.md",
+    "web/src/features/journal/JournalAdminPage.tsx",
+    "web/src/features/journal/JournalBookReader.module.css",
+    "web/src/features/journal/JournalBookReader.test.tsx",
+    "web/src/features/journal/JournalBookReader.tsx",
+    "web/src/features/journal/JournalCanvas.module.css",
+    "web/src/features/journal/JournalCanvas.tsx",
+    "web/src/features/journal/JournalPages.test.tsx",
+    "web/src/features/journal/JournalPublicPage.tsx",
+    "web/src/features/journal/journalCopy.ts"
+  ],
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "frontend_tests": 299,
+  "backend_rebuilt": false
+}

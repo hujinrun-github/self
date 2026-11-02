@@ -1,0 +1,17 @@
+{
+  "release_id": "portfolio-markdown-width-20261013-005727-8abb782a",
+  "deployed_at": "2026-10-12T17:00:19.365671+00:00",
+  "scope": "wider WYSIWYG and preview Markdown content frontend only",
+  "image": "sha256:e652b997c61c5e55c2b3e97d2c3db476eb64a0480d656b19c08b3ebe0c18d516",
+  "image_tag": "self-portfolio-app:portfolio-markdown-width-20261013-005727-8abb782a",
+  "container_id": "274184e6e5f3e8e216cdee27c780236daefd840ea5d1f7319e9f47516bb10f03",
+  "health": "healthy",
+  "restart_count": 0,
+  "env_sha256": "a5ddb8d1fb4c6f4696376566bb29c1f1d40ff5e6d493ddd7ad0523211b0e8112",
+  "configuration_preserved": true,
+  "remote_checkout_unchanged": true,
+  "unrelated_containers_unchanged": true,
+  "server_sha256": "9185e4640e5d5fe8dde36713e3efe5c4c7deb117f623dfa4407732e6ffc219fa",
+  "static_files_verified": 128,
+  "rollback_tag": "self-portfolio-app:rollback-portfolio-markdown-width-20261013-005727-8abb782a"
+}
