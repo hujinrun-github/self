@@ -22,6 +22,7 @@ type Item = {
   slug: string;
   summary?: string;
   excerpt?: string;
+  cover_url?: string;
   featured?: boolean;
   published_at?: string | null;
   tags?: Term[];
@@ -44,6 +45,7 @@ type PreviewCard = {
 
 type CollectionEntry = {
   chips: string[];
+  coverURL?: string;
   description: string;
   href?: string;
   key: string;
@@ -386,7 +388,7 @@ function ProjectShowcaseCard({
 }) {
   const content = (
     <>
-      <div aria-hidden="true" className={styles.media}><FolderCode size={36} strokeWidth={1.3} /></div>
+      <ProjectCardMedia coverURL={entry.coverURL} key={entry.coverURL} />
       <div className={styles.stack}>
         <div className={styles.editorialMeta}>
           {(entry.meta.length > 0 ? entry.meta : [entry.prominent ? featuredLabel : itemLabel]).map((value) => (
@@ -418,6 +420,16 @@ function ProjectShowcaseCard({
     <Link className={className} to={entry.href}>
       {content}
     </Link>
+  );
+}
+
+function ProjectCardMedia({ coverURL }: { coverURL?: string }) {
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div aria-hidden="true" className={`${styles.media} ${styles.projectCardMedia}`}>
+      {coverURL && !failed ? <img alt="" loading="lazy" onError={() => setFailed(true)} src={coverURL} /> : <FolderCode size={36} strokeWidth={1.3} />}
+    </div>
   );
 }
 
@@ -472,6 +484,7 @@ function projectEntries(items: Item[], locale: Locale): CollectionEntry[] {
 
   return items.map((item, index) => ({
     chips: termNames(item.techs),
+    coverURL: item.cover_url,
     description: itemSummary(item, "projects", ""),
     href: withLocale(locale, `/projects/${item.slug || item.id}`),
     key: `project-${item.id}`,

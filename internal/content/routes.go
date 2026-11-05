@@ -296,7 +296,7 @@ func writeError(w http.ResponseWriter, err error) {
 		httpserver.WriteError(w, http.StatusNotFound, "not_found", "Content not found", nil)
 	case errors.Is(err, ErrImmutableSlug), errors.Is(err, ErrDeleteBlocked), errors.Is(err, ErrSlugConflict):
 		httpserver.WriteError(w, http.StatusConflict, "conflict", err.Error(), nil)
-	case errors.Is(err, ErrInvalidReorder), errors.Is(err, ErrInvalidStatus), errors.Is(err, ErrEmptySlug), errors.Is(err, ErrReservedSlug), errors.Is(err, ErrSlugTooLong), errors.Is(err, ErrUnsafeMarkdownMedia), errors.Is(err, ErrInvalidComment):
+	case errors.Is(err, ErrInvalidReorder), errors.Is(err, ErrInvalidStatus), errors.Is(err, ErrEmptySlug), errors.Is(err, ErrReservedSlug), errors.Is(err, ErrSlugTooLong), errors.Is(err, ErrUnsafeMarkdownMedia), errors.Is(err, ErrInvalidComment), errors.Is(err, ErrInvalidProjectCover):
 		httpserver.WriteError(w, http.StatusBadRequest, "validation_error", err.Error(), nil)
 	default:
 		httpserver.WriteError(w, http.StatusInternalServerError, "internal_error", "Content operation failed", nil)

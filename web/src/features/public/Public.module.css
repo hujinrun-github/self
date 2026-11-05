@@ -1822,6 +1822,18 @@
   aspect-ratio: auto;
 }
 
+.projectCardMedia {
+  position: relative;
+}
+
+.projectCardMedia > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .projectGrid + .twoPanelGrid {
   margin-top: 48px;
 }

@@ -526,13 +526,13 @@ func TestHardDeleteDraftProjectClearsMediaReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-	if _, err := repo.db.ExecContext(t.Context(), `INSERT INTO media_references (media_asset_id, resource_type, resource_id, source, created_at) VALUES ($1, $2, $3, $4, now())`, mediaID, "project", project.ID, "cover"); err != nil {
-		t.Fatalf("insert media reference: %v", err)
+	var count int
+	if err := repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = 'project' AND resource_id = $1 AND media_asset_id = $2 AND source = 'cover'`, project.ID, mediaID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("cover reference count = %d, err = %v, want 1", count, err)
 	}
 	if err := repo.DeleteProject(t.Context(), project.ID); err != nil {
 		t.Fatalf("DeleteProject: %v", err)
 	}
-	var count int
 	if err := repo.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM media_references WHERE resource_type = $1 AND resource_id = $2`, "project", project.ID).Scan(&count); err != nil {
 		t.Fatalf("count media references: %v", err)
 	}

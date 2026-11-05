@@ -6,9 +6,11 @@ import { linkMarkdown } from "./markdownTools";
 import styles from "./EditorMediaPanel.module.css";
 
 type EditorMediaPanelProps = {
-  onInsert: (markdown: string) => void;
   onCancel: () => void;
-};
+} & (
+  | { onInsert: (markdown: string) => void; onSelectCover?: never }
+  | { onInsert?: never; onSelectCover: (image: { id: number; thumbnail: string }) => void }
+);
 
 type EditorImage = {
   id: number;
@@ -27,7 +29,7 @@ export async function uploadEditorImage(file: File, signal?: AbortSignal): Promi
   return (await uploadImage(file, signal)).markdown;
 }
 
-export function EditorMediaPanel({ onInsert, onCancel }: EditorMediaPanelProps) {
+export function EditorMediaPanel({ onInsert, onSelectCover, onCancel }: EditorMediaPanelProps) {
   const [items, setItems] = useState<EditorImage[]>([]);
   const [selected, setSelected] = useState<EditorImage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +100,7 @@ export function EditorMediaPanel({ onInsert, onCancel }: EditorMediaPanelProps) 
       if (!active.current || controller.signal.aborted) return;
       setItems((current) => mergeImages([item], current));
       setSelected(item);
-      setMessage("上传成功，点击「插入图片」放入正文。");
+      setMessage(onSelectCover ? "上传成功，点击「使用此封面」确认。" : "上传成功，点击「插入图片」放入正文。");
     } catch (error) {
       if (active.current && !controller.signal.aborted) {
         setUploadError(error instanceof Error ? error.message : "上传失败，请重试。");
@@ -124,7 +126,7 @@ export function EditorMediaPanel({ onInsert, onCancel }: EditorMediaPanelProps) 
       <div className={styles.uploadArea}>
         <span aria-hidden="true" className={styles.uploadIcon}><ImagePlus size={23} /></span>
         <div className={styles.uploadCopy}>
-          <strong>添加正文配图</strong>
+          <strong>{onSelectCover ? "选择项目封面" : "添加正文配图"}</strong>
           <p>上传新图片，或从媒体库选择已有素材。</p>
           <small>PNG、JPG、WebP · 最大 5 MB</small>
         </div>
@@ -184,16 +186,19 @@ export function EditorMediaPanel({ onInsert, onCancel }: EditorMediaPanelProps) 
           ))}
         </div>
       ) : !loading && !libraryError ? (
-        <div className={styles.empty}><ImagePlus aria-hidden="true" size={27} /><strong>媒体库里还没有可用图片</strong><span>上传第一张配图，即可在正文中使用。</span></div>
+        <div className={styles.empty}><ImagePlus aria-hidden="true" size={27} /><strong>媒体库里还没有可用图片</strong><span>{onSelectCover ? "上传一张图片作为项目封面。" : "上传第一张配图，即可在正文中使用。"}</span></div>
       ) : null}
       {loading ? <p className={styles.loading} role="status"><LoaderCircle aria-hidden="true" className={styles.spinner} size={16} />正在加载图片…</p> : null}
       {hasMore && !libraryError ? <button className={styles.moreButton} disabled={loading} onClick={() => startLibraryLoad(nextPage.current)} type="button">加载更多</button> : null}
 
       <div className={styles.footer}>
-        <span className={styles.selectionInfo}>{selected ? `已选择：${selected.name}` : "选择一张图片后插入光标位置"}</span>
+        <span className={styles.selectionInfo}>{selected ? `已选择：${selected.name}` : onSelectCover ? "选择一张图片作为封面" : "选择一张图片后插入光标位置"}</span>
         <div className={styles.actions}>
           <button className={styles.button} onClick={() => finish(onCancel)} type="button">取消</button>
-          <button className={`${styles.button} ${styles.primary}`} disabled={!selected || uploading} onClick={() => selected && finish(() => onInsert(selected.markdown))} type="button">插入图片</button>
+          <button className={`${styles.button} ${styles.primary}`} disabled={!selected || uploading} onClick={() => {
+            if (!selected) return;
+            finish(() => onSelectCover ? onSelectCover(selected) : onInsert(selected.markdown));
+          }} type="button">{onSelectCover ? "使用此封面" : "插入图片"}</button>
         </div>
       </div>
     </div>

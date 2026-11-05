@@ -12,6 +12,7 @@ import {
   type TranslationLocale,
 } from "./adminI18n";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { EditorMediaPanel } from "./markdown/EditorMediaPanel";
 import { translationActionError } from "./translationErrors";
 import { TranslationWorkflow } from "./TranslationWorkflow";
 import { WritingImportDialog } from "./WritingImportDialog";
@@ -28,6 +29,7 @@ type CreatedContent = {
 
 type ContentForm = {
   body: string;
+  cover: ProjectCover | null;
   demoURL: string;
   durationMinutes: string;
   eventName: string;
@@ -42,6 +44,8 @@ type ContentForm = {
   title: string;
   videoURL: string;
 };
+
+type ProjectCover = { id: number; thumbnail: string };
 
 type TranslationState = {
   content_md: string;
@@ -65,6 +69,7 @@ const translationLocales = ["en", "ja"] as const satisfies readonly TranslationL
 
 const emptyForm: ContentForm = {
   body: "",
+  cover: null,
   demoURL: "",
   durationMinutes: "",
   eventName: "",
@@ -732,6 +737,10 @@ function RoutableContentFields({
         ) : null}
       </section>
 
+      {resource === "projects" ? (
+        <ProjectCoverField cover={form.cover} onChange={(cover) => update("cover", cover)} />
+      ) : null}
+
       {hasMarkdownBody ? (
         <section className={styles.formSection}>
           <h2>正文</h2>
@@ -780,6 +789,37 @@ function RoutableContentFields({
         ) : null}
       </section>
     </>
+  );
+}
+
+function ProjectCoverField({ cover, onChange }: { cover: ProjectCover | null; onChange: (cover: ProjectCover | null) => void }) {
+  const [picking, setPicking] = useState(false);
+
+  return (
+    <section aria-labelledby="project-cover-heading" className={styles.formSection}>
+      <div className={styles.sectionHeader}>
+        <div>
+          <h2 id="project-cover-heading">项目封面</h2>
+          <p>保存后显示在公开项目列表的卡片上，各语言共用同一张封面。</p>
+        </div>
+      </div>
+      {cover?.thumbnail ? <img alt="项目封面预览" className={styles.projectCoverPreview} src={cover.thumbnail} /> : null}
+      {cover && !cover.thumbnail ? <p>当前封面暂无预览，可更换或移除。</p> : null}
+      {picking ? (
+        <EditorMediaPanel
+          onCancel={() => setPicking(false)}
+          onSelectCover={(image) => {
+            onChange(image);
+            setPicking(false);
+          }}
+        />
+      ) : (
+        <div className={`${styles.actions} ${styles.projectCoverActions}`}>
+          <button className={styles.button} onClick={() => setPicking(true)} type="button">{cover ? "更换封面" : "设置封面"}</button>
+          {cover ? <button className={styles.button} onClick={() => onChange(null)} type="button">移除封面</button> : null}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1141,6 +1181,7 @@ function payloadFor(resource: Resource, form: ContentForm) {
   if (resource === "projects") {
     return {
       content_md: form.body,
+      cover_media_id: form.cover?.id ?? null,
       demo_url: form.demoURL,
       featured: form.featured,
       repo_url: form.repoURL,
@@ -1260,9 +1301,11 @@ function formFromResponse(resource: Resource, response: Record<string, unknown>)
     };
   }
   if (resource === "projects") {
+    const coverID = response.cover_media_id;
     return {
       ...emptyForm,
       body: stringValue(response.content_md),
+      cover: typeof coverID === "number" && coverID > 0 ? { id: coverID, thumbnail: stringValue(response.cover_url) } : null,
       demoURL: stringValue(response.demo_url),
       featured: booleanValue(response.featured),
       repoURL: stringValue(response.repo_url),

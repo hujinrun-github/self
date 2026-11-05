@@ -30,18 +30,20 @@ type ProjectInput struct {
 }
 
 type Project struct {
-	ID          int64      `json:"id"`
-	Title       string     `json:"title"`
-	Slug        string     `json:"slug"`
-	Summary     string     `json:"summary"`
-	ContentMD   string     `json:"content_md"`
-	DemoURL     string     `json:"demo_url"`
-	RepoURL     string     `json:"repo_url"`
-	Status      Status     `json:"status"`
-	Featured    bool       `json:"featured"`
-	SortOrder   int        `json:"sort_order"`
-	PublishedAt *time.Time `json:"published_at"`
-	Techs       []Term     `json:"techs"`
+	ID           int64      `json:"id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Summary      string     `json:"summary"`
+	ContentMD    string     `json:"content_md"`
+	CoverMediaID *int64     `json:"cover_media_id,omitempty"`
+	CoverURL     string     `json:"cover_url,omitempty"`
+	DemoURL      string     `json:"demo_url"`
+	RepoURL      string     `json:"repo_url"`
+	Status       Status     `json:"status"`
+	Featured     bool       `json:"featured"`
+	SortOrder    int        `json:"sort_order"`
+	PublishedAt  *time.Time `json:"published_at"`
+	Techs        []Term     `json:"techs"`
 }
 
 type Term struct {
@@ -89,6 +91,9 @@ func (r *Repository) createProjectAttempt(ctx context.Context, input ProjectInpu
 	if err != nil {
 		return Project{}, err
 	}
+	if err := validateProjectCover(ctx, tx, input.CoverMediaID); err != nil {
+		return Project{}, err
+	}
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO projects (title, slug, summary, content_md, cover_media_id, demo_url, repo_url, seo_title, seo_description, og_image_media_id, status, featured, sort_order, published_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
 		input.Title,
@@ -114,6 +119,9 @@ func (r *Repository) createProjectAttempt(ctx context.Context, input ProjectInpu
 	if err := r.replaceProjectTechs(ctx, tx, id, input.Techs); err != nil {
 		return Project{}, err
 	}
+	if err := syncProjectCoverReference(ctx, tx, id, input.CoverMediaID, now); err != nil {
+		return Project{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Project{}, err
 	}
@@ -132,11 +140,17 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 
 	var currentSlug string
 	var status Status
-	if err := tx.QueryRowContext(ctx, `SELECT slug, status FROM projects WHERE id = $1`, id).Scan(&currentSlug, &status); err != nil {
+	var currentCoverID sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT slug, status, cover_media_id FROM projects WHERE id = $1 FOR UPDATE`, id).Scan(&currentSlug, &status, &currentCoverID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
 		return Project{}, err
+	}
+	if input.CoverMediaID != nil && (!currentCoverID.Valid || *input.CoverMediaID != currentCoverID.Int64) {
+		if err := validateProjectCover(ctx, tx, input.CoverMediaID); err != nil {
+			return Project{}, err
+		}
 	}
 	nextSlug := currentSlug
 	if input.Slug != "" || input.Title != "" {
@@ -195,6 +209,9 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 	if err := r.replaceProjectTechs(ctx, tx, id, input.Techs); err != nil {
 		return Project{}, err
 	}
+	if err := syncProjectCoverReference(ctx, tx, id, input.CoverMediaID, now); err != nil {
+		return Project{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Project{}, err
 	}
@@ -204,13 +221,28 @@ func (r *Repository) UpdateProject(ctx context.Context, id int64, input ProjectI
 func (r *Repository) GetProject(ctx context.Context, id int64) (Project, error) {
 	var project Project
 	var publishedAt sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT id, title, slug, summary, content_md, demo_url, repo_url, status, featured, sort_order, published_at FROM projects WHERE id = $1`, id).
-		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD, &project.DemoURL, &project.RepoURL, &project.Status, &project.Featured, &project.SortOrder, &publishedAt)
+	var coverVariant string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT p.id, p.title, p.slug, p.summary, p.content_md, p.cover_media_id,
+			CASE WHEN cover.variants ? 'card' THEN 'card'
+				 WHEN cover.variants ? 'content' THEN 'content'
+				 WHEN cover.variants ? 'original' THEN 'original'
+				 ELSE '' END,
+			p.demo_url, p.repo_url, p.status, p.featured, p.sort_order, p.published_at
+		FROM projects p
+		LEFT JOIN media_assets cover ON cover.id = p.cover_media_id
+			AND cover.lifecycle_state = 'active' AND cover.media_kind = 'image'
+		WHERE p.id = $1`, id).
+		Scan(&project.ID, &project.Title, &project.Slug, &project.Summary, &project.ContentMD,
+			&project.CoverMediaID, &coverVariant, &project.DemoURL, &project.RepoURL, &project.Status, &project.Featured, &project.SortOrder, &publishedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
 		return Project{}, err
+	}
+	if project.CoverMediaID != nil && coverVariant != "" {
+		project.CoverURL = fmt.Sprintf("/media/%d/%s", *project.CoverMediaID, coverVariant)
 	}
 	if publishedAt.Valid {
 		value := normalizeTime(publishedAt.Time)
@@ -222,6 +254,30 @@ func (r *Repository) GetProject(ctx context.Context, id int64) (Project, error) 
 	}
 	project.Techs = techs
 	return project, nil
+}
+
+func validateProjectCover(ctx context.Context, tx *sql.Tx, mediaID *int64) error {
+	if mediaID == nil {
+		return nil
+	}
+	var id int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE id = $1 AND lifecycle_state = 'active' AND media_kind = 'image' FOR KEY SHARE`, *mediaID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalidProjectCover
+	}
+	return err
+}
+
+func syncProjectCoverReference(ctx context.Context, tx *sql.Tx, projectID int64, mediaID *int64, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM media_references
+		WHERE resource_type = 'project' AND resource_id = $1 AND source = 'cover'
+		AND media_asset_id IS DISTINCT FROM $2`, projectID, mediaID)
+	if err != nil || mediaID == nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO media_references (media_asset_id, resource_type, resource_id, source, created_at)
+		VALUES ($1, 'project', $2, 'cover', $3) ON CONFLICT DO NOTHING`, *mediaID, projectID, now)
+	return err
 }
 
 func (r *Repository) SetProjectStatus(ctx context.Context, id int64, status Status, publishedAt *time.Time) error {

@@ -443,6 +443,18 @@
   padding-top: 0;
 }
 
+.projectCoverPreview {
+  display: block;
+  width: min(100%, 360px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.projectCoverActions {
+  justify-content: flex-start;
+}
+
 .formSection h2,
 .sectionIntro h2 {
   font-size: 16px;
