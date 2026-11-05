@@ -279,6 +279,12 @@
   border-radius: 8px;
 }
 
+/* Keep ProseMirror's caret placeholders inline during IME composition. */
+.host :global(.ProseMirror) img:global(.ProseMirror-separator) {
+  display: inline;
+  margin: 0;
+}
+
 .host :global(.ProseMirror) img:global(.ProseMirror-selectednode) {
   outline: 3px solid #91b3e5;
   outline-offset: 3px;
