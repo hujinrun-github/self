@@ -184,7 +184,7 @@ Treat the first production rollout as `migration`, even when using `workflow_dis
 - Failed preflight, backup, or image build steps must not stop the currently running production container; the old version continues serving traffic.
 - During cutover, the script captures the currently running image and previous `.env`. If `docker compose up` or the health check fails, it attempts to retag the previous image, restore the previous `.env`, and recreate `portfolio-app` with `--no-build`.
 - The script expects either `pg_dump` on the remote host or a working Docker fallback so it can emit both schema-only and full PostgreSQL backups.
-- `MEDIA_BLOB_BACKEND=hybrid` triggers a MinIO preflight before the new container is started. If the bucket check fails, the deployment stops before the app comes back up.
+- `MEDIA_BLOB_BACKEND=hybrid` triggers a MinIO preflight before replacing the runtime configuration. If the pipeline settings fail, an app-only release can reuse the healthy container’s MinIO settings after those settings pass the same check. If neither check succeeds, the deployment stops before replacing the runtime configuration.
 
 Build the frontend before deployment so `web/dist` is present in the image build context. Persist PostgreSQL outside the application container, persist `runtime/uploads`, and do not serve or back up `runtime/private_uploads`; it only stores processing scratch files.
 

@@ -110,6 +110,7 @@ test_backup_failure_exits_before_build_or_cutover() {
   local app_dir trace_file output
   app_dir="$(mktemp -d)"
   trace_file="$(mktemp)"
+  printf 'OLD_ENV=1\n' > "$app_dir/.env"
 
   if output="$(DRY_RUN=0 MOCK_PG_DUMP_EXIT=1 run_remote_deploy "$app_dir" "$trace_file" 2>&1)"; then
     fail "expected backup failure to stop deploy"
@@ -125,6 +126,7 @@ test_backup_failure_exits_before_build_or_cutover() {
   if grep -Fq "docker compose up -d" "$trace_file"; then
     fail "backup failure should not cut over containers"
   fi
+  grep -Fxq "OLD_ENV=1" "$app_dir/.env" || fail "backup failure should restore the old environment"
   [[ "$output" != *"Container portfolio-app Stopping"* ]] || fail "backup failure output should not stop service"
 }
 
@@ -221,6 +223,46 @@ test_hybrid_release_uses_host_gateway_for_minio_preflight() {
   assert_trace_contains "$trace_file" "docker run --rm --add-host host.docker.internal:host-gateway --entrypoint /bin/sh minio/mc -lc minio preflight"
 }
 
+test_app_only_release_revalidates_running_minio_after_pipeline_failure() {
+  local app_dir trace_file output
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+  mkdir -p "$app_dir/runtime"
+  printf 'none\n' > "$app_dir/runtime/.last_migrations_fingerprint"
+
+  output="$(DRY_RUN=0 RELEASE_TYPE=app-only PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid \
+    MOCK_MINIO_REJECT_BUCKET=portfolio-media run_remote_deploy "$app_dir" "$trace_file" 2>&1)"
+
+  [[ "$output" == *"Using the verified MinIO configuration"* ]] || fail "expected successful running MinIO fallback"
+  [[ "$(grep -c 'minio preflight' "$trace_file")" == 2 ]] || fail "expected both configurations to be probed"
+  grep -Fxq "MINIO_BUCKET=running-bucket" "$app_dir/.env" || fail "expected verified running bucket"
+  grep -Fxq "MINIO_SECRET_KEY=running-secret" "$app_dir/.env" || fail "expected verified running secret"
+  assert_trace_contains "$trace_file" "docker compose up -d --remove-orphans --wait"
+  if grep -Fq "running-secret" "$trace_file"; then
+    fail "secret value should never be written to the deploy trace"
+  fi
+}
+
+test_minio_preflight_failure_preserves_existing_env() {
+  local app_dir trace_file output
+  app_dir="$(mktemp -d)"
+  trace_file="$(mktemp)"
+  mkdir -p "$app_dir/runtime"
+  printf 'none\n' > "$app_dir/runtime/.last_migrations_fingerprint"
+  printf 'OLD_ENV=1\n' > "$app_dir/.env"
+
+  if output="$(DRY_RUN=0 RELEASE_TYPE=app-only PORTFOLIO_MEDIA_BLOB_BACKEND=hybrid \
+    MOCK_DOCKER_FAIL_MATCH="minio/mc" run_remote_deploy "$app_dir" "$trace_file" 2>&1)"; then
+    fail "expected deploy to fail when both MinIO configurations fail"
+  fi
+
+  [[ "$output" == *"Running service MinIO configuration failed preflight"* ]] || fail "expected a clear preflight error"
+  grep -Fxq "OLD_ENV=1" "$app_dir/.env" || fail "preflight failure should preserve the existing environment"
+  if grep -Fq "docker compose build" "$trace_file"; then
+    fail "preflight failure should stop the deploy before building or cutting over"
+  fi
+}
+
 test_missing_app_dir_fails_clearly() {
   local missing_dir trace_file output
   missing_dir="/tmp/portfolio-missing-$RANDOM"
@@ -248,6 +290,8 @@ main() {
   test_wait_fallback_polls_health_when_wait_not_supported
   test_dry_run_prints_planned_steps
   test_hybrid_release_uses_host_gateway_for_minio_preflight
+  test_app_only_release_revalidates_running_minio_after_pipeline_failure
+  test_minio_preflight_failure_preserves_existing_env
   test_missing_app_dir_fails_clearly
   echo "PASS: remote-deploy.sh contract tests passed"
 }

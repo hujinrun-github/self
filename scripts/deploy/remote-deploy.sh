@@ -7,16 +7,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 run_minio_preflight_if_needed() {
   local endpoint object_key network trace
+  local -a network_args=()
 
   if [[ "${PORTFOLIO_MEDIA_BLOB_BACKEND:-local}" != "hybrid" ]]; then
     return 0
   fi
 
-  require_env_value PORTFOLIO_MINIO_ACCESS_KEY
-  require_env_value PORTFOLIO_MINIO_SECRET_KEY
-  require_env_value PORTFOLIO_MINIO_BUCKET
+  require_env_value PORTFOLIO_MINIO_ACCESS_KEY || return 1
+  require_env_value PORTFOLIO_MINIO_SECRET_KEY || return 1
+  require_env_value PORTFOLIO_MINIO_BUCKET || return 1
 
-  endpoint="$(normalize_minio_endpoint_url)"
+  endpoint="$(normalize_minio_endpoint_url)" || return 1
   if [[ -z "$endpoint" ]]; then
     echo "missing required environment variable: PORTFOLIO_MINIO_ENDPOINT" >&2
     return 1
@@ -26,6 +27,7 @@ run_minio_preflight_if_needed() {
   network="${PORTFOLIO_MINIO_PREFLIGHT_NETWORK:-default}"
   trace="docker run --rm"
   if [[ "$network" != "default" ]]; then
+    network_args=(--network "$network")
     trace="$trace --network $network"
   fi
   trace="$trace --add-host host.docker.internal:host-gateway"
@@ -35,34 +37,14 @@ run_minio_preflight_if_needed() {
     return 0
   fi
 
-  if [[ "$network" == "default" ]]; then
-    docker run --rm \
-      --add-host host.docker.internal:host-gateway \
-      -e MINIO_ENDPOINT="$endpoint" \
-      -e MINIO_ACCESS_KEY="${PORTFOLIO_MINIO_ACCESS_KEY}" \
-      -e MINIO_SECRET_KEY="${PORTFOLIO_MINIO_SECRET_KEY}" \
-      -e MINIO_BUCKET="${PORTFOLIO_MINIO_BUCKET}" \
-      -e HEALTHCHECK_OBJECT="$object_key" \
-      --entrypoint /bin/sh \
-      minio/mc \
-      -lc '
-        mc alias set portfolio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null &&
-        mc ls "portfolio/$MINIO_BUCKET" >/dev/null &&
-        printf healthcheck | mc pipe "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null &&
-        mc cat "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null &&
-        mc rm "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null
-      '
-    return 0
-  fi
-
-  docker run --rm \
-    --network "$network" \
+  MINIO_ENDPOINT="$endpoint" \
+  MINIO_ACCESS_KEY="$PORTFOLIO_MINIO_ACCESS_KEY" \
+  MINIO_SECRET_KEY="$PORTFOLIO_MINIO_SECRET_KEY" \
+  MINIO_BUCKET="$PORTFOLIO_MINIO_BUCKET" \
+  HEALTHCHECK_OBJECT="$object_key" \
+    docker run --rm "${network_args[@]}" \
     --add-host host.docker.internal:host-gateway \
-    -e MINIO_ENDPOINT="$endpoint" \
-    -e MINIO_ACCESS_KEY="${PORTFOLIO_MINIO_ACCESS_KEY}" \
-    -e MINIO_SECRET_KEY="${PORTFOLIO_MINIO_SECRET_KEY}" \
-    -e MINIO_BUCKET="${PORTFOLIO_MINIO_BUCKET}" \
-    -e HEALTHCHECK_OBJECT="$object_key" \
+    -e MINIO_ENDPOINT -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY -e MINIO_BUCKET -e HEALTHCHECK_OBJECT \
     --entrypoint /bin/sh \
     minio/mc \
     -lc '
@@ -72,6 +54,18 @@ run_minio_preflight_if_needed() {
       mc cat "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null &&
       mc rm "portfolio/$MINIO_BUCKET/$HEALTHCHECK_OBJECT" >/dev/null
     '
+}
+
+use_running_minio_configuration() {
+  local key value
+
+  [[ "$(docker inspect -f '{{.State.Health.Status}}' portfolio-app 2>/dev/null)" == "healthy" ]] || return 1
+  [[ "$(docker exec portfolio-app printenv MEDIA_BLOB_BACKEND)" == "hybrid" ]] || return 1
+  for key in ENDPOINT ACCESS_KEY SECRET_KEY BUCKET; do
+    value="$(docker exec portfolio-app printenv "MINIO_$key")" || return 1
+    printf -v "PORTFOLIO_MINIO_$key" '%s' "$value"
+  done
+  PORTFOLIO_MINIO_USE_SSL="$(docker exec portfolio-app printenv MINIO_USE_SSL)" || PORTFOLIO_MINIO_USE_SSL=false
 }
 
 wait_for_health() {
@@ -157,7 +151,9 @@ restore_env_backup() {
   local env_backup="$1"
 
   if [[ -f "$env_backup" ]]; then
-    cp "$env_backup" ".env"
+    install -m 0600 "$env_backup" ".env"
+  else
+    rm -f ".env"
   fi
 }
 
@@ -217,15 +213,28 @@ main() {
     wait_supported=1
   fi
 
+  if ! run_minio_preflight_if_needed; then
+    if [[ "$release_type" != "app-only" ]] || ! use_running_minio_configuration; then
+      echo "MinIO preflight failed; deployment stopped before changing the runtime environment" >&2
+      return 1
+    fi
+    echo "MinIO preflight failed with the pipeline configuration; validating the running service configuration" >&2
+    if ! run_minio_preflight_if_needed; then
+      echo "Running service MinIO configuration failed preflight; deployment stopped" >&2
+      return 1
+    fi
+    echo "Using the verified MinIO configuration from the running service for this release" >&2
+  fi
+
   mkdir -p runtime/uploads runtime/private_uploads runtime/backups
   env_backup="runtime/.env.before-${GITHUB_SHA}"
   if [[ -f ".env" ]]; then
-    cp ".env" "$env_backup"
+    install -m 0600 ".env" "$env_backup"
   else
     rm -f "$env_backup"
   fi
-  render_env_file ".env"
-  run_minio_preflight_if_needed
+  trap 'status=$?; trap - ERR; if [[ "$rollback_on_error" -eq 1 ]]; then rollback_to_previous_service "$rollback_image" "$rollback_tag" "$env_backup" "$wait_supported" "$host_port" || true; else restore_env_backup "$env_backup" || true; fi; exit "$status"' ERR
+  (umask 077; render_env_file ".env")
 
   if [[ "$release_type" == "migration" ]]; then
     run_schema_backup "runtime/backups" "$GITHUB_SHA"
@@ -237,7 +246,6 @@ main() {
   rollback_tag="$(capture_rollback_image_tag)"
   run_logged docker compose build
 
-  trap 'status=$?; trap - ERR; if [[ "$rollback_on_error" -eq 1 ]]; then rollback_to_previous_service "$rollback_image" "$rollback_tag" "$env_backup" "$wait_supported" "$host_port" || true; fi; exit "$status"' ERR
   rollback_on_error=1
   compose_up_current_release "$wait_supported" "$host_port"
   rollback_on_error=0

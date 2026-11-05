@@ -10,10 +10,30 @@ if [[ -n "${MOCK_DOCKER_FAIL_MATCH:-}" && "$*" == *"${MOCK_DOCKER_FAIL_MATCH}"* 
   exit "${MOCK_DOCKER_FAIL_EXIT:-1}"
 fi
 
+if [[ "${1:-}" == "run" && -n "${MOCK_MINIO_REJECT_BUCKET:-}" && "${MINIO_BUCKET:-}" == "$MOCK_MINIO_REJECT_BUCKET" ]]; then
+  exit 1
+fi
+
+if [[ "$*" == "exec portfolio-app printenv "* ]]; then
+  case "${4:-}" in
+    MEDIA_BLOB_BACKEND) printf 'hybrid\n' ;;
+    MINIO_ENDPOINT) printf 'http://host.docker.internal:19000\n' ;;
+    MINIO_ACCESS_KEY) printf 'running-user\n' ;;
+    MINIO_SECRET_KEY) printf 'running-secret\n' ;;
+    MINIO_BUCKET) printf 'running-bucket\n' ;;
+    MINIO_USE_SSL) printf 'false\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+
 if [[ "${1:-}" == "inspect" && "${2:-}" == "-f" ]]; then
   case "${3:-}" in
     "{{.Image}}")
       printf '%s\n' "${MOCK_DOCKER_INSPECT_IMAGE:-sha256:previous-image}"
+      ;;
+    "{{.State.Health.Status}}")
+      printf '%s\n' "${MOCK_DOCKER_INSPECT_HEALTH:-healthy}"
       ;;
     "{{.Config.Image}}")
       printf '%s\n' "${MOCK_DOCKER_INSPECT_CONFIG_IMAGE:-self-portfolio-app:latest}"
